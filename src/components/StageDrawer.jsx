@@ -19,6 +19,13 @@ export default function StageDrawer({
   onAddField,
   onDeleteField,
   onDeleteStage,
+  onMoveField,
+  commentsByField,
+  currentUserId,
+  isAdmin,
+  onAddComment,
+  onDeleteComment,
+  teamNames = [],
 }) {
   useEffect(() => {
     const onKey = (e) => {
@@ -68,7 +75,7 @@ export default function StageDrawer({
 
       <div className="drawer-body">
         <datalist id="owner-options">
-          {owners.map((o) => (
+          {[...new Set([...owners, ...teamNames])].map((o) => (
             <option key={o} value={o} />
           ))}
         </datalist>
@@ -76,8 +83,22 @@ export default function StageDrawer({
         {fields.length === 0 && (
           <p className="empty-note">This stage has no questions yet. Add the first thing your team needs to decide.</p>
         )}
-        {fields.map((f) => (
-          <FieldEditor key={f.id} field={f} people={people} onUpdate={onUpdateField} onDelete={onDeleteField} />
+        {fields.map((f, i) => (
+          <FieldEditor
+            key={f.id}
+            field={f}
+            people={people}
+            onUpdate={onUpdateField}
+            onDelete={onDeleteField}
+            onMove={onMoveField}
+            canMoveUp={i > 0}
+            canMoveDown={i < fields.length - 1}
+            comments={commentsByField?.get(f.id) || []}
+            currentUserId={currentUserId}
+            isAdmin={isAdmin}
+            onAddComment={onAddComment}
+            onDeleteComment={onDeleteComment}
+          />
         ))}
 
         <AddQuestion onAdd={(data) => onAddField(node.id, data)} />

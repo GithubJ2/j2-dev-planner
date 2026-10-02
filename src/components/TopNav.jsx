@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import HelpPanel from './HelpPanel'
 import { NavLink } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { supabase } from '../lib/supabase'
@@ -6,6 +7,7 @@ import { supabase } from '../lib/supabase'
 export default function TopNav() {
   const { profile, isAdmin, signOut } = useAuth()
   const [pending, setPending] = useState(0)
+  const [help, setHelp] = useState(false)
 
   useEffect(() => {
     if (!isAdmin) return
@@ -31,9 +33,11 @@ export default function TopNav() {
         )}
       </div>
       <div className="topnav-user">
+        <button className="btn btn-ghost btn-sm" onClick={() => setHelp(true)}>Help</button>
         <span className="user-name">{profile?.full_name || profile?.email}</span>
         <button className="btn btn-ghost btn-sm" onClick={signOut}>Sign out</button>
       </div>
+      {help && <HelpPanel onClose={() => setHelp(false)} />}
     </nav>
   )
 }

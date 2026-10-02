@@ -42,6 +42,14 @@ export default function Admin() {
     load()
   }
 
+  const renameDept = async (d) => {
+    const name = window.prompt('New name for this department', d.name)
+    if (name === null || !name.trim() || name.trim() === d.name) return
+    const { error } = await supabase.from('departments').update({ name: name.trim() }).eq('id', d.id)
+    if (error) return toast.error(error.message)
+    load()
+  }
+
   const removeDept = async (d) => {
     if (!window.confirm(`Remove ${d.name}? Its plans stay, but lose their department.`)) return
     const { error } = await supabase.from('departments').delete().eq('id', d.id)
@@ -99,7 +107,10 @@ export default function Admin() {
           {departments.map((d) => (
             <li key={d.id}>
               <span><span className="swatch" style={{ background: d.color }} /> {d.icon} {d.name}</span>
-              <button className="btn btn-danger-ghost btn-sm" onClick={() => removeDept(d)}>Remove</button>
+              <span className="row-actions">
+                <button className="btn btn-ghost btn-sm" onClick={() => renameDept(d)}>Rename</button>
+                <button className="btn btn-danger-ghost btn-sm" onClick={() => removeDept(d)}>Remove</button>
+              </span>
             </li>
           ))}
         </ul>

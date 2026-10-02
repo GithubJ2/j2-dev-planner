@@ -19,6 +19,7 @@ export default function ActivityPanel({ planId, people, onClose }) {
 
   const describe = (r) => {
     const d = r.detail || {}
+    if (r.action === 'comment_added') return <>commented on <strong>{d.label}</strong></>
     if (d.status && d.old_status && d.status !== d.old_status) {
       return <>moved <strong>{d.label}</strong> to {FIELD_STATUSES[d.status]?.label ?? d.status}</>
     }

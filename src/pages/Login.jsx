@@ -25,7 +25,11 @@ export default function Login() {
         options: { data: { full_name: fullName.trim() }, emailRedirectTo: window.location.origin },
       })
       if (error) setError(error.message)
-      else if (!data.session) setNotice(`We sent a confirmation link to ${email}. Open it to finish creating your account.`)
+      else if (!data.session) {
+        // Accounts are auto-confirmed in the database, so sign straight in.
+        const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
+        if (signInError) setError(`Account created, but signing in failed: ${signInError.message}`)
+      }
     } else {
       const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin })
       if (error) setError(error.message)

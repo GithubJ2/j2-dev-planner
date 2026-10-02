@@ -56,6 +56,19 @@ export default function Dashboard() {
   const filterName =
     filter === 'all' ? 'All plans' : filter === 'templates' ? 'Templates' : deptById[filter]?.name ?? 'Plans'
 
+  const stats = useMemo(() => {
+    const live = visible.filter((p) => !p.archived && !p.is_template)
+    const agg = live.reduce(
+      (a, p) => {
+        const r = progress[p.id]
+        if (!r) return a
+        return { total: a.total + r.total, decided: a.decided + r.decided, to_confirm: a.to_confirm + r.to_confirm }
+      },
+      { total: 0, decided: 0, to_confirm: 0 }
+    )
+    return { plans: live.length, ...agg, open: agg.total - agg.decided - agg.to_confirm }
+  }, [visible, progress])
+
   return (
     <div className="dash">
       <aside className="dash-side" aria-label="Departments">
@@ -89,6 +102,15 @@ export default function Dashboard() {
             <button className="btn btn-primary" onClick={() => setCreating(true)}>New plan</button>
           </div>
         </div>
+
+        {plans && stats.plans > 0 && (
+          <div className="stats">
+            <div><strong>{stats.plans}</strong><span>{stats.plans === 1 ? 'active plan' : 'active plans'}</span></div>
+            <div><strong>{stats.total ? Math.round((stats.decided / stats.total) * 100) : 0}%</strong><span>decided overall</span></div>
+            <div><strong>{stats.to_confirm}</strong><span>to confirm</span></div>
+            <div><strong>{stats.open}</strong><span>still open</span></div>
+          </div>
+        )}
 
         {error && <p className="form-error">Could not load plans: {error}</p>}
         {!plans && !error && <p className="muted">Loading plans</p>}

@@ -18,14 +18,38 @@ import { useAuth } from '../lib/auth'
 import { useToast } from '../lib/toast'
 import { CATEGORIES, PLAN_STATUSES } from '../lib/constants'
 import { flowOrder, removeById, summarize, upsertById } from '../lib/utils'
+import { tidyLayout } from '../lib/layout'
+import { downloadText, planToMarkdown, slugify } from '../lib/export'
 import StageNode from '../components/StageNode'
 import StageDrawer from '../components/StageDrawer'
 import ProgressBar from '../components/ProgressBar'
-import InlineInput from '../components/InlineInput'
 import ActivityPanel from '../components/ActivityPanel'
+import ChecklistView from '../components/ChecklistView'
+import PlanSettingsModal from '../components/PlanSettingsModal'
+import HelpPanel from '../components/HelpPanel'
 
 const nodeTypes = { stage: StageNode }
 const DRAWER_OFFSET = 230
+
+function readPref(key, fallback) {
+  try {
+    return localStorage.getItem(key) ?? fallback
+  } catch {
+    return fallback
+  }
+}
+function writePref(key, value) {
+  try {
+    localStorage.setItem(key, value)
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+function initials(name = '') {
+  const parts = name.trim().split(/\s+/)
+  return ((parts[0]?.[0] || '') + (parts[1]?.[0] || '')).toUpperCase()
+}
 
 export default function PlanView() {
   return (
@@ -39,7 +63,7 @@ function PlanCanvas() {
   const { id } = useParams()
   const navigate = useNavigate()
   const toast = useToast()
-  const { user } = useAuth()
+  const { user, profile, isAdmin } = useAuth()
   const rf = useReactFlow()
   const nodesInitialized = useNodesInitialized()
   const fitted = useRef(false)
@@ -48,17 +72,28 @@ function PlanCanvas() {
   const [dbNodes, setDbNodes] = useState([])
   const [dbEdges, setDbEdges] = useState([])
   const [fields, setFields] = useState([])
+  const [comments, setComments] = useState([])
   const [departments, setDepartments] = useState([])
   const [people, setPeople] = useState({})
+  const [viewers, setViewers] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [selectedId, setSelectedId] = useState(null)
   const [ownerFilter, setOwnerFilter] = useState('')
+  const [view, setView] = useState(() => readPref('planner:view', window.innerWidth < 800 ? 'checklist' : 'canvas'))
   const [showActivity, setShowActivity] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
+  const [showHelp, setShowHelp] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
 
   const [rfNodes, setRfNodes, onNodesChange] = useNodesState([])
   const [rfEdges, setRfEdges, onEdgesChange] = useEdgesState([])
+
+  const switchView = (v) => {
+    setView(v)
+    writePref('planner:view', v)
+    if (v === 'canvas') fitted.current = false
+  }
 
   // ---------- Load ----------
   useEffect(() => {
@@ -72,6 +107,7 @@ function PlanCanvas() {
         supabase.from('plan_nodes').select('*').eq('plan_id', id),
         supabase.from('plan_edges').select('*').eq('plan_id', id),
         supabase.from('node_fields').select('*').eq('plan_id', id),
+        supabase.from('field_comments').select('*').eq('plan_id', id).order('created_at'),
         supabase.from('departments').select('*').order('sort_order'),
         supabase.from('profiles').select('id, full_name, email'),
       ])
@@ -82,7 +118,7 @@ function PlanCanvas() {
         setLoading(false)
         return
       }
-      const [p, n, e, f, d, pr] = results
+      const [p, n, e, f, c, d, pr] = results
       if (!p.data) {
         setError('This plan does not exist, or you do not have access to it.')
         setLoading(false)
@@ -92,6 +128,7 @@ function PlanCanvas() {
       setDbNodes(n.data)
       setDbEdges(e.data)
       setFields(f.data)
+      setComments(c.data)
       setDepartments(d.data)
       setPeople(Object.fromEntries(pr.data.map((x) => [x.id, x])))
       setError('')
@@ -102,9 +139,12 @@ function PlanCanvas() {
     }
   }, [id])
 
-  // ---------- Live updates from teammates ----------
+  // ---------- Live updates and presence ----------
   useEffect(() => {
-    const channel = supabase.channel(`plan-${id}-${Math.random().toString(36).slice(2)}`)
+    if (!user) return
+    const channel = supabase.channel(`plan-${id}-${Math.random().toString(36).slice(2)}`, {
+      config: { presence: { key: user.id } },
+    })
     const bind = (table, setter) => {
       channel.on('postgres_changes', { event: 'INSERT', schema: 'public', table, filter: `plan_id=eq.${id}` }, (pl) =>
         setter((l) => upsertById(l, pl.new))
@@ -112,7 +152,6 @@ function PlanCanvas() {
       channel.on('postgres_changes', { event: 'UPDATE', schema: 'public', table, filter: `plan_id=eq.${id}` }, (pl) =>
         setter((l) => upsertById(l, pl.new))
       )
-      // Delete events cannot be filtered; ids that are not in this plan are simply ignored.
       channel.on('postgres_changes', { event: 'DELETE', schema: 'public', table }, (pl) =>
         setter((l) => removeById(l, pl.old.id))
       )
@@ -120,35 +159,56 @@ function PlanCanvas() {
     bind('plan_nodes', setDbNodes)
     bind('plan_edges', setDbEdges)
     bind('node_fields', setFields)
+    bind('field_comments', setComments)
     channel.on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'plans', filter: `id=eq.${id}` }, (pl) =>
       setPlan((p) => (p ? { ...p, ...pl.new } : p))
     )
-    channel.subscribe()
+    channel.on('presence', { event: 'sync' }, () => {
+      const state = channel.presenceState()
+      const others = Object.entries(state)
+        .filter(([key]) => key !== user.id)
+        .map(([key, metas]) => ({ id: key, name: metas[0]?.name || 'Someone' }))
+      setViewers(others)
+    })
+    channel.subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        channel.track({ name: profile?.full_name || user.email, at: Date.now() })
+      }
+    })
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [id])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, user?.id, profile?.full_name])
 
   // ---------- Derived data ----------
   const fieldsByNode = useMemo(() => {
     const map = new Map()
-    for (const f of [...fields].sort((a, b) => a.sort_order - b.sort_order)) {
+    const sorted = [...fields].sort((a, b) => a.sort_order - b.sort_order || String(a.created_at).localeCompare(String(b.created_at)))
+    for (const f of sorted) {
       if (!map.has(f.node_id)) map.set(f.node_id, [])
       map.get(f.node_id).push(f)
     }
     return map
   }, [fields])
 
-  const owners = useMemo(
-    () => [...new Set(fields.map((f) => f.owner).filter(Boolean))].sort(),
-    [fields]
-  )
+  const commentsByField = useMemo(() => {
+    const map = new Map()
+    for (const c of [...comments].sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))) {
+      if (!map.has(c.field_id)) map.set(c.field_id, [])
+      map.get(c.field_id).push(c)
+    }
+    return map
+  }, [comments])
 
+  const owners = useMemo(() => [...new Set(fields.map((f) => f.owner).filter(Boolean))].sort(), [fields])
+  const teamNames = useMemo(() => Object.values(people).map((p) => p.full_name).filter(Boolean).sort(), [people])
+  const myName = profile?.full_name
   const summary = useMemo(() => summarize(fields), [fields])
   const order = useMemo(() => flowOrder(dbNodes, dbEdges), [dbNodes, dbEdges])
   const selectedNode = dbNodes.find((n) => n.id === selectedId) || null
+  const department = departments.find((d) => d.id === plan?.department_id)
 
-  // Keep React Flow nodes in sync with the database, without fighting an active drag.
   useEffect(() => {
     setRfNodes((prev) => {
       const prevMap = new Map(prev.map((n) => [n.id, n]))
@@ -168,12 +228,13 @@ function PlanCanvas() {
             category: n.category,
             fields: nf,
             ownerFilter,
+            commentCount: nf.reduce((c, f) => c + (commentsByField.get(f.id)?.length || 0), 0),
             dimmed: ownerFilter ? !nf.some((f) => f.owner === ownerFilter) : false,
           },
         }
       })
     })
-  }, [dbNodes, fieldsByNode, selectedId, ownerFilter, setRfNodes])
+  }, [dbNodes, fieldsByNode, commentsByField, selectedId, ownerFilter, setRfNodes])
 
   useEffect(() => {
     setRfEdges((prev) => {
@@ -193,11 +254,11 @@ function PlanCanvas() {
   }, [dbEdges, setRfEdges])
 
   useEffect(() => {
-    if (!loading && nodesInitialized && !fitted.current && rfNodes.length) {
+    if (view === 'canvas' && !loading && nodesInitialized && !fitted.current && rfNodes.length) {
       fitted.current = true
       rf.fitView({ padding: 0.12, duration: 300 })
     }
-  }, [loading, nodesInitialized, rfNodes.length, rf])
+  }, [view, loading, nodesInitialized, rfNodes.length, rf])
 
   // ---------- Mutations ----------
   const report = useCallback((error, what) => toast.error(`Could not ${what}: ${error.message}`), [toast])
@@ -220,7 +281,9 @@ function PlanCanvas() {
   const updateField = useCallback(
     async (fieldId, patch) => {
       const before = fields.find((f) => f.id === fieldId)
-      setFields((l) => l.map((f) => (f.id === fieldId ? { ...f, ...patch, updated_by: user.id, updated_at: new Date().toISOString() } : f)))
+      setFields((l) =>
+        l.map((f) => (f.id === fieldId ? { ...f, ...patch, updated_by: user.id, updated_at: new Date().toISOString() } : f))
+      )
       const { data, error } = await supabase.from('node_fields').update(patch).eq('id', fieldId).select().single()
       if (error) {
         if (before) setFields((l) => upsertById(l, before))
@@ -250,17 +313,59 @@ function PlanCanvas() {
   const deleteField = useCallback(
     async (fieldId) => {
       setFields((l) => removeById(l, fieldId))
+      setComments((l) => l.filter((c) => c.field_id !== fieldId))
       const { error } = await supabase.from('node_fields').delete().eq('id', fieldId)
       if (error) report(error, 'delete the question')
     },
     [report]
   )
 
+  const moveField = useCallback(
+    async (fieldId, dir) => {
+      const field = fields.find((f) => f.id === fieldId)
+      if (!field) return
+      const siblings = fieldsByNode.get(field.node_id) || []
+      const i = siblings.findIndex((f) => f.id === fieldId)
+      const j = dir === 'up' ? i - 1 : i + 1
+      if (j < 0 || j >= siblings.length) return
+      const other = siblings[j]
+      const a = field.sort_order
+      const b = other.sort_order === a ? a + 1 : other.sort_order
+      setFields((l) => l.map((f) => (f.id === fieldId ? { ...f, sort_order: b } : f.id === other.id ? { ...f, sort_order: a } : f)))
+      const { error } = await supabase.rpc('swap_field_order', { a: fieldId, b: other.id })
+      if (error) report(error, 'reorder the questions')
+    },
+    [fields, fieldsByNode, report]
+  )
+
+  const addComment = useCallback(
+    async (fieldId, body) => {
+      const { data, error } = await supabase
+        .from('field_comments')
+        .insert({ field_id: fieldId, plan_id: id, user_id: user.id, body })
+        .select()
+        .single()
+      if (error) return report(error, 'post the comment')
+      setComments((l) => upsertById(l, data))
+    },
+    [id, user.id, report]
+  )
+
+  const deleteComment = useCallback(
+    async (commentId) => {
+      setComments((l) => removeById(l, commentId))
+      const { error } = await supabase.from('field_comments').delete().eq('id', commentId)
+      if (error) report(error, 'delete the comment')
+    },
+    [report]
+  )
+
   const addStage = async () => {
     const pane = document.querySelector('.canvas-wrap')?.getBoundingClientRect()
-    const center = pane
-      ? rf.screenToFlowPosition({ x: pane.left + pane.width / 2 - 120, y: pane.top + pane.height / 2 - 60 })
-      : { x: 0, y: 0 }
+    const center =
+      view === 'canvas' && pane
+        ? rf.screenToFlowPosition({ x: pane.left + pane.width / 2 - 120, y: pane.top + pane.height / 2 - 60 })
+        : { x: dbNodes.reduce((m, n) => Math.max(m, n.pos_x), -330) + 330, y: 0 }
     const { data, error } = await supabase
       .from('plan_nodes')
       .insert({ plan_id: id, title: 'New stage', category: 'process', pos_x: center.x, pos_y: center.y })
@@ -268,6 +373,7 @@ function PlanCanvas() {
       .single()
     if (error) return report(error, 'add a stage')
     setDbNodes((l) => upsertById(l, data))
+    if (view !== 'canvas') switchView('canvas')
     setSelectedId(data.id)
   }
 
@@ -275,9 +381,36 @@ function PlanCanvas() {
     setSelectedId(null)
     setDbNodes((l) => removeById(l, nodeId))
     setDbEdges((l) => l.filter((e) => e.source_id !== nodeId && e.target_id !== nodeId))
+    const fieldIds = new Set((fieldsByNode.get(nodeId) || []).map((f) => f.id))
     setFields((l) => l.filter((f) => f.node_id !== nodeId))
+    setComments((l) => l.filter((c) => !fieldIds.has(c.field_id)))
     const { error } = await supabase.from('plan_nodes').delete().eq('id', nodeId)
     if (error) report(error, 'delete the stage')
+  }
+
+  const tidy = async () => {
+    const positions = tidyLayout(dbNodes, dbEdges)
+    setDbNodes((l) =>
+      l.map((n) => {
+        const p = positions.find((x) => x.id === n.id)
+        return p ? { ...n, pos_x: p.x, pos_y: p.y } : n
+      })
+    )
+    const { error } = await supabase.rpc('set_node_positions', { positions })
+    if (error) return report(error, 'tidy the layout')
+    setTimeout(() => rf.fitView({ padding: 0.12, duration: 400 }), 50)
+  }
+
+  const exportMarkdown = async () => {
+    setMenuOpen(false)
+    const md = planToMarkdown({ plan, nodes: dbNodes, edges: dbEdges, fields, comments, people, department })
+    downloadText(`${slugify(plan.title)}.md`, md)
+    try {
+      await navigator.clipboard.writeText(md)
+      toast.success('Exported as Markdown and copied to your clipboard')
+    } catch {
+      toast.success('Exported as Markdown')
+    }
   }
 
   const onConnect = useCallback(
@@ -329,11 +462,10 @@ function PlanCanvas() {
           return d ? { ...n, pos_x: d.position.x, pos_y: d.position.y } : n
         })
       )
-      const results = await Promise.all(
-        list.map((d) => supabase.from('plan_nodes').update({ pos_x: d.position.x, pos_y: d.position.y }).eq('id', d.id))
-      )
-      const failed = results.find((r) => r.error)
-      if (failed) report(failed.error, 'save the layout')
+      const { error } = await supabase.rpc('set_node_positions', {
+        positions: list.map((d) => ({ id: d.id, x: d.position.x, y: d.position.y })),
+      })
+      if (error) report(error, 'save the layout')
     },
     [report]
   )
@@ -350,8 +482,18 @@ function PlanCanvas() {
     [dbNodes, rf]
   )
 
+  const openOnCanvas = (nodeId) => {
+    switchView('canvas')
+    fitted.current = true // skip the automatic fit so the focus animation is not overridden
+    setTimeout(() => focusNode(nodeId), 150)
+  }
+
   const idx = selectedId ? order.indexOf(selectedId) : -1
-  const startWalkthrough = () => order.length && focusNode(order[0])
+  const startWalkthrough = () => {
+    if (!order.length) return
+    if (view !== 'canvas') openOnCanvas(order[0])
+    else focusNode(order[0])
+  }
 
   // ---------- Plan menu ----------
   const duplicate = async (asTemplate) => {
@@ -389,6 +531,8 @@ function PlanCanvas() {
       </div>
     )
 
+  const ownerOptions = [...new Set([...(myName ? [myName] : []), ...owners])]
+
   return (
     <div className="plan-page">
       <header className="plan-bar">
@@ -396,35 +540,24 @@ function PlanCanvas() {
           <Link to="/" className="back-link">All plans</Link>
           <div className="plan-name">
             <span className="plan-name-icon" aria-hidden="true">{plan.icon}</span>
-            <InlineInput
-              className="plan-title-input"
-              value={plan.title}
-              aria-label="Plan name"
-              onSave={(v) => v.trim() && updatePlan({ title: v.trim() })}
-            />
+            <h1 className="plan-title">{plan.title}</h1>
+            <button className="text-btn" onClick={() => setShowSettings(true)}>Settings</button>
           </div>
-          <div className="plan-selects">
-            <select
-              className="input input-compact"
-              value={plan.department_id ?? ''}
-              onChange={(e) => updatePlan({ department_id: e.target.value || null })}
-              aria-label="Department"
-            >
-              <option value="">No department</option>
-              {departments.map((d) => (
-                <option key={d.id} value={d.id}>{d.icon} {d.name}</option>
-              ))}
-            </select>
-            <select
-              className={`input input-compact plan-status-select st-${plan.status}`}
-              value={plan.status}
-              onChange={(e) => updatePlan({ status: e.target.value })}
-              aria-label="Plan status"
-            >
-              {Object.entries(PLAN_STATUSES).map(([k, v]) => (
-                <option key={k} value={k}>{v}</option>
-              ))}
-            </select>
+          <div className="plan-meta-line">
+            {department && <span className="dept" style={{ '--dept': department.color }}>{department.name}</span>}
+            <span className={`plan-status st-${plan.status}`}>{PLAN_STATUSES[plan.status] || plan.status}</span>
+            {plan.is_template && <span className="tag">Template</span>}
+            {plan.archived && <span className="tag">Archived</span>}
+            {viewers.length > 0 && (
+              <span className="viewers" title={viewers.map((v) => v.name).join(', ')}>
+                {viewers.slice(0, 4).map((v) => (
+                  <span key={v.id} className="avatar" aria-hidden="true">{initials(v.name)}</span>
+                ))}
+                <span className="viewers-text">
+                  {viewers.length === 1 ? `${viewers[0].name} is here` : `${viewers.length} others here`}
+                </span>
+              </span>
+            )}
           </div>
         </div>
 
@@ -433,27 +566,34 @@ function PlanCanvas() {
         </div>
 
         <div className="plan-bar-actions">
-          <select
-            className="input input-compact"
-            value={ownerFilter}
-            onChange={(e) => setOwnerFilter(e.target.value)}
-            aria-label="Highlight questions for"
-          >
+          <div className="view-switch" role="group" aria-label="View">
+            <button className={view === 'canvas' ? 'is-on' : ''} onClick={() => switchView('canvas')} aria-pressed={view === 'canvas'}>Canvas</button>
+            <button className={view === 'checklist' ? 'is-on' : ''} onClick={() => switchView('checklist')} aria-pressed={view === 'checklist'}>Checklist</button>
+          </div>
+          <select className="input input-compact" value={ownerFilter} onChange={(e) => setOwnerFilter(e.target.value)} aria-label="Show questions for">
             <option value="">Everyone's questions</option>
-            {owners.map((o) => (
-              <option key={o} value={o}>Questions for {o}</option>
+            {ownerOptions.map((o) => (
+              <option key={o} value={o}>{o === myName ? 'Questions for me' : `Questions for ${o}`}</option>
             ))}
           </select>
-          <button className="btn btn-ghost" onClick={startWalkthrough} disabled={!order.length}>Walk through</button>
-          <button className="btn btn-ghost" onClick={() => setShowActivity(true)}>Changes</button>
+          {view === 'canvas' && (
+            <>
+              <button className="btn btn-ghost" onClick={startWalkthrough} disabled={!order.length}>Walk through</button>
+              <button className="btn btn-ghost" onClick={tidy} disabled={dbNodes.length < 2} title="Arrange stages by flow">Tidy</button>
+            </>
+          )}
           <button className="btn btn-primary" onClick={addStage}>Add stage</button>
           <div className="menu-wrap">
             <button className="icon-btn" aria-label="More plan actions" aria-expanded={menuOpen} onClick={() => setMenuOpen((m) => !m)}>⋯</button>
             {menuOpen && (
               <div className="menu" role="menu" onMouseLeave={() => setMenuOpen(false)}>
+                <button role="menuitem" onClick={() => { setMenuOpen(false); setShowActivity(true) }}>Recent changes</button>
+                <button role="menuitem" onClick={exportMarkdown}>Export as Markdown</button>
+                <button role="menuitem" onClick={() => { setMenuOpen(false); setShowSettings(true) }}>Plan settings</button>
                 <button role="menuitem" onClick={() => duplicate(false)}>Duplicate with answers</button>
                 <button role="menuitem" onClick={() => duplicate(true)}>Save as template</button>
                 <button role="menuitem" onClick={toggleArchive}>{plan.archived ? 'Restore plan' : 'Archive plan'}</button>
+                <button role="menuitem" onClick={() => { setMenuOpen(false); setShowHelp(true) }}>How this works</button>
                 <button role="menuitem" className="danger" onClick={deletePlan}>Delete plan</button>
               </div>
             )}
@@ -461,62 +601,97 @@ function PlanCanvas() {
         </div>
       </header>
 
-      <div className="canvas-wrap">
-        <ReactFlow
-          nodes={rfNodes}
-          edges={rfEdges}
-          nodeTypes={nodeTypes}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onConnect={onConnect}
-          onEdgesDelete={onEdgesDelete}
-          onEdgeDoubleClick={onEdgeDoubleClick}
-          onNodeClick={(_e, n) => setSelectedId(n.id)}
-          onPaneClick={() => setSelectedId(null)}
-          onNodeDragStop={onNodeDragStop}
-          deleteKeyCode={['Backspace', 'Delete']}
-          minZoom={0.2}
-          maxZoom={1.75}
-        >
-          <Background variant={BackgroundVariant.Dots} gap={22} size={1.3} color="#c3cbd6" />
-          <Controls showInteractive={false} position="bottom-left" />
-          <MiniMap
-            position="bottom-right"
-            pannable
-            zoomable
-            nodeColor={(n) => CATEGORIES[n.data?.category]?.color || '#94a3b8'}
-            nodeStrokeWidth={0}
-            maskColor="rgba(21, 35, 59, 0.08)"
-          />
-        </ReactFlow>
+      {view === 'canvas' ? (
+        <div className="canvas-wrap">
+          <ReactFlow
+            nodes={rfNodes}
+            edges={rfEdges}
+            nodeTypes={nodeTypes}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onConnect={onConnect}
+            onEdgesDelete={onEdgesDelete}
+            onEdgeDoubleClick={onEdgeDoubleClick}
+            onNodeClick={(_e, n) => setSelectedId(n.id)}
+            onPaneClick={() => setSelectedId(null)}
+            onNodeDragStop={onNodeDragStop}
+            deleteKeyCode={['Backspace', 'Delete']}
+            minZoom={0.2}
+            maxZoom={1.75}
+          >
+            <Background variant={BackgroundVariant.Dots} gap={22} size={1.3} color="#c3cbd6" />
+            <Controls showInteractive={false} position="bottom-left" />
+            <MiniMap position="bottom-right" pannable zoomable nodeColor={(n) => CATEGORIES[n.data?.category]?.color || '#94a3b8'} nodeStrokeWidth={0} maskColor="rgba(21, 35, 59, 0.08)" />
+          </ReactFlow>
 
-        {!selectedNode && (
-          <p className="canvas-hint">
-            Click a stage to fill it in. Drag from a stage's right edge to connect it. Double-click a line to label it, or select it and press Delete to remove it.
-          </p>
-        )}
+          {!selectedNode && dbNodes.length > 0 && (
+            <p className="canvas-hint">
+              Click a stage to fill it in. Drag from a stage's right edge to connect it. Double-click a line to label it, or select it and press Delete.
+            </p>
+          )}
+          {dbNodes.length === 0 && (
+            <div className="canvas-empty">
+              <p>This plan is empty. Add the first stage, then connect stages to show how the work flows.</p>
+              <button className="btn btn-primary" onClick={addStage}>Add stage</button>
+            </div>
+          )}
 
-        {selectedNode && (
-          <StageDrawer
-            key={selectedNode.id}
-            node={selectedNode}
-            fields={fieldsByNode.get(selectedNode.id) || []}
+          {selectedNode && (
+            <StageDrawer
+              key={selectedNode.id}
+              node={selectedNode}
+              fields={fieldsByNode.get(selectedNode.id) || []}
+              people={people}
+              owners={owners}
+              teamNames={teamNames}
+              position={{ index: Math.max(idx, 0), total: order.length }}
+              onPrev={idx > 0 ? () => focusNode(order[idx - 1]) : null}
+              onNext={idx >= 0 && idx < order.length - 1 ? () => focusNode(order[idx + 1]) : null}
+              onClose={() => setSelectedId(null)}
+              onUpdateNode={updateNode}
+              onUpdateField={updateField}
+              onAddField={addField}
+              onDeleteField={deleteField}
+              onDeleteStage={deleteStage}
+              onMoveField={moveField}
+              commentsByField={commentsByField}
+              currentUserId={user.id}
+              isAdmin={isAdmin}
+              onAddComment={addComment}
+              onDeleteComment={deleteComment}
+            />
+          )}
+        </div>
+      ) : (
+        <div className="checklist-wrap">
+          <datalist id="owner-options">
+            {[...new Set([...owners, ...teamNames])].map((o) => (
+              <option key={o} value={o} />
+            ))}
+          </datalist>
+          <ChecklistView
+            order={order}
+            nodes={dbNodes}
+            fieldsByNode={fieldsByNode}
             people={people}
             owners={owners}
-            position={{ index: Math.max(idx, 0), total: order.length }}
-            onPrev={idx > 0 ? () => focusNode(order[idx - 1]) : null}
-            onNext={idx >= 0 && idx < order.length - 1 ? () => focusNode(order[idx + 1]) : null}
-            onClose={() => setSelectedId(null)}
-            onUpdateNode={updateNode}
+            ownerFilter={ownerFilter}
+            commentsByField={commentsByField}
+            currentUserId={user.id}
+            isAdmin={isAdmin}
             onUpdateField={updateField}
-            onAddField={addField}
             onDeleteField={deleteField}
-            onDeleteStage={deleteStage}
+            onMoveField={moveField}
+            onAddComment={addComment}
+            onDeleteComment={deleteComment}
+            onOpenStage={openOnCanvas}
           />
-        )}
-      </div>
+        </div>
+      )}
 
       {showActivity && <ActivityPanel planId={id} people={people} onClose={() => setShowActivity(false)} />}
+      {showSettings && <PlanSettingsModal plan={plan} departments={departments} onSave={updatePlan} onClose={() => setShowSettings(false)} />}
+      {showHelp && <HelpPanel onClose={() => setShowHelp(false)} />}
     </div>
   )
 }

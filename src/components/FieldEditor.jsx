@@ -1,9 +1,24 @@
 import { useState } from 'react'
 import InlineInput from './InlineInput'
+import CommentsThread from './CommentsThread'
 import { FIELD_STATUSES, FIELD_TYPES } from '../lib/constants'
 import { isFilled, personName, timeAgo } from '../lib/utils'
 
-export default function FieldEditor({ field, people, onUpdate, onDelete }) {
+export default function FieldEditor({
+  field,
+  people,
+  onUpdate,
+  onDelete,
+  comments = [],
+  currentUserId,
+  isAdmin = false,
+  onAddComment,
+  onDeleteComment,
+  onMove,
+  canMoveUp = false,
+  canMoveDown = false,
+  owners = [],
+}) {
   const [editing, setEditing] = useState(false)
   const options = Array.isArray(field.options) ? field.options : []
 
@@ -168,13 +183,21 @@ export default function FieldEditor({ field, people, onUpdate, onDelete }) {
               />
             </label>
           )}
-          <button
-            type="button"
-            className="btn btn-danger-ghost"
-            onClick={() => window.confirm(`Delete the question "${field.label}"?`) && onDelete(field.id)}
-          >
-            Delete question
-          </button>
+          <div className="field-config-actions">
+            {onMove && (
+              <span className="row-actions">
+                <button type="button" className="btn btn-ghost btn-sm" disabled={!canMoveUp} onClick={() => onMove(field.id, 'up')}>Move up</button>
+                <button type="button" className="btn btn-ghost btn-sm" disabled={!canMoveDown} onClick={() => onMove(field.id, 'down')}>Move down</button>
+              </span>
+            )}
+            <button
+              type="button"
+              className="btn btn-danger-ghost"
+              onClick={() => window.confirm(`Delete the question "${field.label}"?`) && onDelete(field.id)}
+            >
+              Delete question
+            </button>
+          </div>
         </div>
       )}
 
@@ -200,6 +223,16 @@ export default function FieldEditor({ field, people, onUpdate, onDelete }) {
           </span>
         )}
       </div>
+      {onAddComment && (
+        <CommentsThread
+          comments={comments}
+          people={people}
+          currentUserId={currentUserId}
+          isAdmin={isAdmin}
+          onAdd={(body) => onAddComment(field.id, body)}
+          onDelete={onDeleteComment}
+        />
+      )}
     </div>
   )
 }

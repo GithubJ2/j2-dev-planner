@@ -60,6 +60,15 @@ git push -u origin main
 `.env.local` is git-ignored. The publishable key is safe in the browser (row-level security protects the data),
 but keep it out of the repo anyway and set it in Vercel.
 
+## What's in the app
+
+- **Canvas**: editable flow diagram of stages. Click a stage to answer its questions. **Tidy** arranges stages by flow.
+- **Checklist**: every question in flow order, filterable by status, person and keyword, editable in place. Default on phones.
+- **Comments** under each question, **Recent changes** history, and **who's here** presence in the header.
+- **Export as Markdown** for a decisions document you can paste into email or a doc.
+- **Plan settings**: description, icon, department, status, template flag. Plans can be duplicated, templated, archived.
+- **Team** page (admins): approve sign-ups, manage roles and departments.
+
 ## Adding new plans
 
 No code needed. Use **New plan** on the dashboard and either start blank or copy the structure of an

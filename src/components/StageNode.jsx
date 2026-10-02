@@ -31,6 +31,7 @@ function StageNode({ data, selected }) {
           <div className="stage-count">
             {decided} of {fields.length} decided
             {ownerFilter && forOwner > 0 && <span className="stage-owner">, {forOwner} for {ownerFilter}</span>}
+            {data.commentCount > 0 && <span className="stage-comments">{data.commentCount} {data.commentCount === 1 ? 'comment' : 'comments'}</span>}
           </div>
         </>
       ) : (
