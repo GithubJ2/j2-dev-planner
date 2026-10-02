@@ -1,14 +1,14 @@
 // Stage categories. Keep keys in sync with the check constraint on plan_nodes.category.
 export const CATEGORIES = {
-  source: { label: 'Input or source', color: '#1f5fd6' },
-  strategy: { label: 'Strategy', color: '#7a4fd1' },
-  integration: { label: 'Integration', color: '#0e7c86' },
-  compliance: { label: 'Compliance', color: '#b4233a' },
-  channel: { label: 'Channel', color: '#c2410c' },
-  process: { label: 'Process', color: '#475569' },
-  handoff: { label: 'Handoff', color: '#15803d' },
-  analytics: { label: 'Measurement', color: '#0369a1' },
-  admin: { label: 'Admin', color: '#64748b' },
+  source: { label: 'Input or source', color: '#5b6b8c' },
+  strategy: { label: 'Strategy', color: '#7a6a99' },
+  integration: { label: 'Integration', color: '#4f7f88' },
+  compliance: { label: 'Compliance', color: '#9a5c66' },
+  channel: { label: 'Channel', color: '#a3744d' },
+  process: { label: 'Process', color: '#6b7280' },
+  handoff: { label: 'Handoff', color: '#5f8a6a' },
+  analytics: { label: 'Measurement', color: '#4d7a99' },
+  admin: { label: 'Admin', color: '#8a8f99' },
 }
 
 export const FIELD_STATUSES = {

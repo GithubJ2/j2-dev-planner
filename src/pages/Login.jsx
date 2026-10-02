@@ -43,14 +43,12 @@ export default function Login() {
 
   return (
     <div className="auth-page">
+      <div className="auth-brand">
+        <img src="/favicon.svg" alt="" width="56" height="56" />
+        <h1>J2 Dev Planner</h1>
+        <p>Open questions, settled one stage at a time.</p>
+      </div>
       <div className="auth-card">
-        <div className="auth-brand">
-          <img src="/favicon.svg" alt="" width="34" height="34" />
-          <div>
-            <h1>J2 Dev Planner</h1>
-            <p>Map out projects stage by stage, with your team.</p>
-          </div>
-        </div>
         <h2>{heading}</h2>
         <form className="stack" onSubmit={submit}>
           {mode === 'signup' && (

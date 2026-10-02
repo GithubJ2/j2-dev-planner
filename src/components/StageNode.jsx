@@ -7,14 +7,17 @@ function StageNode({ data, selected }) {
   const { fields, dimmed, ownerFilter } = data
   const decided = fields.filter((f) => f.status === 'decided').length
   const forOwner = ownerFilter ? fields.filter((f) => f.owner === ownerFilter).length : 0
+  const settled = fields.length > 0 && decided === fields.length
+  const untouched = fields.length === 0 || decided === 0
 
   return (
     <div
-      className={`stage${selected ? ' is-selected' : ''}${dimmed ? ' is-dimmed' : ''}`}
+      className={`stage${selected ? ' is-selected' : ''}${dimmed ? ' is-dimmed' : ''}${settled ? ' is-settled' : ''}${untouched ? ' is-untouched' : ''}`}
       style={{ '--cat': cat.color }}
     >
       <Handle type="target" position={Position.Left} />
-      <div className="stage-cat">{cat.label}</div>
+      {settled && <span className="stage-mark" aria-hidden="true" />}
+      <div className="stage-cat"><span className="cat-dot" />{cat.label}</div>
       <div className="stage-title">{data.title}</div>
       {data.subtitle && <div className="stage-sub">{data.subtitle}</div>}
       {fields.length > 0 ? (
@@ -29,7 +32,7 @@ function StageNode({ data, selected }) {
             ))}
           </div>
           <div className="stage-count">
-            {decided} of {fields.length} decided
+            {settled ? 'Settled' : `${decided} of ${fields.length} decided`}
             {ownerFilter && forOwner > 0 && <span className="stage-owner">, {forOwner} for {ownerFilter}</span>}
             {data.commentCount > 0 && <span className="stage-comments">{data.commentCount} {data.commentCount === 1 ? 'comment' : 'comments'}</span>}
           </div>

@@ -2,25 +2,20 @@ export default function ProgressBar({ summary, size = 'md' }) {
   const { total, decided, to_confirm, open, pct } = summary
   const d = total ? (decided / total) * 100 : 0
   const c = total ? (to_confirm / total) * 100 : 0
+  const label = `${decided} decided, ${to_confirm} to confirm, ${open} open`
+  const settled = total > 0 && decided === total
   return (
-    <div className={`progress progress-${size}`}>
+    <div className={`progress progress-${size}${settled ? ' is-settled' : ''}`}>
       {size !== 'sm' && (
         <div className="progress-head">
           <span className="progress-pct">{pct}%</span>
-          <span className="progress-caption">decided</span>
+          <span className="progress-caption">{settled ? 'settled' : 'decided'}</span>
         </div>
       )}
-      <div
-        className="progress-track"
-        role="progressbar"
-        aria-valuenow={pct}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-label={`${decided} decided, ${to_confirm} to confirm, ${open} open`}
-        title={`${decided} decided, ${to_confirm} to confirm, ${open} open`}
-      >
+      <div className="progress-track" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={label} title={label}>
         <span className="seg seg-decided" style={{ width: `${d}%` }} />
         <span className="seg seg-confirm" style={{ width: `${c}%` }} />
+        <span className="seg seg-open" />
       </div>
       {size === 'lg' && (
         <div className="progress-legend">
