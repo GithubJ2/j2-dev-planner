@@ -45,8 +45,8 @@ export default function Login() {
     <div className="auth-page">
       <div className="auth-brand">
         <img src="/favicon.svg" alt="" width="56" height="56" />
-        <h1>J2 Dev Planner</h1>
-        <p>Open questions, settled one stage at a time.</p>
+        <h1>Project<span className="brand-r">R</span></h1>
+        <p>Every launch, one list, who does what by when.</p>
       </div>
       <div className="auth-card">
         <h2>{heading}</h2>
