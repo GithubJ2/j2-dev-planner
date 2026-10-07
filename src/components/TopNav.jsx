@@ -21,11 +21,11 @@ export default function TopNav() {
   return (
     <nav className="topnav">
       <NavLink to="/" className="brand" end>
-        <img src="/favicon.svg" alt="" width="22" height="22" />
-        <span>J2 Dev Planner</span>
+        <img src="/favicon.svg" alt="" width="24" height="24" />
+        <span>Project<span className="brand-r">R</span></span>
       </NavLink>
       <div className="topnav-links">
-        <NavLink to="/" end>Plans</NavLink>
+        <NavLink to="/" end>Projects</NavLink>
         {isAdmin && (
           <NavLink to="/team">
             Team {pending > 0 && <span className="badge" aria-label={`${pending} waiting for approval`}>{pending}</span>}
