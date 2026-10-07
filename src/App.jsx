@@ -35,7 +35,7 @@ export default function App() {
 
 function Gate() {
   const { session, profile, loading, recovery, isAdmin } = useAuth()
-  if (loading) return <div className="splash">Loading J2 Dev Planner</div>
+  if (loading) return <div className="splash">Loading ProjectR</div>
   if (recovery) return <ResetPassword />
   if (!session) return <Login />
   if (!profile?.approved) return <Pending />
@@ -45,6 +45,7 @@ function Gate() {
       <TopNav />
       <Routes>
         <Route path="/" element={<Dashboard />} />
+        <Route path="/p/:id" element={<PlanView />} />
         <Route path="/plan/:id" element={<PlanView />} />
         <Route path="/team" element={isAdmin ? <Admin /> : <Navigate to="/" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
