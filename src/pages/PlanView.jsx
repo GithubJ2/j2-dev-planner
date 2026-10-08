@@ -18,6 +18,7 @@ export default function PlanView() {
   const [sort, setSort] = useState('priority')
   const [ownerFilter, setOwnerFilter] = useState('')
   const [hideDone, setHideDone] = useState(false)
+  const [hideBlocker, setHideBlocker] = useState(false)
   const [open, setOpen] = useState(() => new Set())
   const [editing, setEditing] = useState(null) // task object or 'new'
   const [form, setForm] = useState(EMPTY)
@@ -52,7 +53,7 @@ export default function PlanView() {
   }
 
   const visible = useMemo(() => {
-    const list = (tasks ?? []).filter((t) => !(hideDone && t.done)).filter((t) => !ownerFilter || (t.owner || '').startsWith(ownerFilter))
+    const list = (tasks ?? []).filter((t) => !(hideDone && t.done)).filter((t) => !(hideBlocker && t.tag === 'blocker')).filter((t) => !ownerFilter || (t.owner || '').startsWith(ownerFilter))
     const cmp = {
       priority: (a, b) => a.priority - b.priority,
       owner: (a, b) => (a.owner || '').localeCompare(b.owner || '') || a.priority - b.priority,
@@ -60,7 +61,7 @@ export default function PlanView() {
       status: (a, b) => (a.done - b.done) || a.priority - b.priority,
     }[sort]
     return [...list].sort(cmp)
-  }, [tasks, sort, ownerFilter, hideDone])
+  }, [tasks, sort, ownerFilter, hideDone, hideBlocker])
 
   const toggleDone = async (t) => {
     setTasks((ts) => ts.map((x) => (x.id === t.id ? { ...x, done: !t.done } : x)))
@@ -132,6 +133,7 @@ export default function PlanView() {
             {owners.map((o) => <option key={o}>{o}</option>)}
           </select>
           <label className="small"><input type="checkbox" checked={hideDone} onChange={(e) => setHideDone(e.target.checked)} /> hide done</label>
+          <label className="small"><input type="checkbox" checked={hideBlocker} onChange={(e) => setHideBlocker(e.target.checked)} /> hide blockers</label>
           <button className="btn btn-ghost btn-sm" onClick={exportCsv}>Export</button>
           {isAdmin && <button className="btn btn-ghost btn-sm" onClick={() => { setPform({ name: project.name, description: project.description || '', target_date: project.target_date || '' }); setEditProject(true) }}>Edit project</button>}
           <button className="btn btn-primary btn-sm" onClick={startNew}>Add task</button>
