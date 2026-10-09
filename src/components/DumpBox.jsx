@@ -111,7 +111,7 @@ export default function DumpBox({ projectId: initialProject, onClose, onAdded })
           )}
           {initialProject && project && <div className="small muted">Adding to <b>{project.name}</b></div>}
           <textarea ref={taRef} className="input dump-area" rows={10} value={text} onChange={(e) => setText(e.target.value)} onPaste={onPaste} onDrop={onDrop} onDragOver={(e) => e.preventDefault()}
-            placeholder={"Anything goes. For example:\n\nJarred to set up zoe@ mailbox by Friday, blocks launch.\nJason: ask ConnectWise for API keys, then I test Monday.\nKundani (Jobix) sending UK number next week."} />
+            placeholder={"Anything goes. For example:\n\nJarred to set up zoe@ mailbox by Friday, blocks launch.\nJason: ask ConnectWise for API keys, then I test Monday.\nJobix (External) sending the UK number next week."} />
           <div className="dump-files">
             {images.map((src, i) => <span key={i} className="dump-thumb"><img src={src} alt="" /><button type="button" className="icon-btn" onClick={() => setImages((xs) => xs.filter((_, k) => k !== i))} aria-label="Remove">×</button></span>)}
             <label className="btn btn-ghost btn-sm">+ Screenshot<input type="file" accept="image/*" multiple hidden onChange={(e) => addFiles(e.target.files)} /></label>

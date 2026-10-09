@@ -35,7 +35,7 @@ Rules:
 - Output ONLY one JSON object, no prose, no code fences: {"tasks":[...],"questions":[...]}.
 - Each task: {"title": short imperative (max 80 chars), "people":[{"name":"<team member>","kind":"owner"|"waiting"}], "due":"YYYY-MM-DD" or "", "tag":"critical"|"blocker"|"", "help": 1-3 plain sentences on what to do and why, "subtasks":[{same shape, no subtasks}]}.
 - "owner" = the person who must do it. "waiting" = someone the owner is waiting on (outside help, approval, a reply).
-- Only use team names given above. If the text names someone not in the team, put them as "waiting" with that name.
+- Only use team names given above (all J2 staff). Anyone outside J2 (suppliers, vendors, clients, partners) is ALWAYS {"name":"External","kind":"waiting"}: never put an outsider's personal name in people, title or help. Name their company instead if useful (e.g. "Jobix", "Sendmarc").
 - Group small steps under one task as subtasks. Don't invent work that isn't in the text. Max 12 tasks.
 - Turn relative dates ("Friday", "next week", "EOD") into real dates from today. If no date, use "".
 - "tag": critical if the dump says urgent/ASAP/launch-blocking; blocker if it stops other work; else "".
@@ -62,9 +62,13 @@ Rules:
   try { parsed = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1)); } catch { return json({ error: "AI gave an unreadable answer. Try again or shorten the dump." }, 502); }
 
   const str = (v: unknown, n: number) => (typeof v === "string" ? v.trim().slice(0, n) : "");
+  // Anyone not on the J2 team list is shown only as "External".
+  const teamSet = new Set((body.team || []).map((n) => String(n).toLowerCase()));
+  const person = (n: string) => (teamSet.has(n.toLowerCase()) ? n : "External");
   const clean = (t: any, sub = false) => ({
     title: str(t?.title, 120),
-    people: Array.isArray(t?.people) ? t.people.filter((p: any) => str(p?.name, 60)).map((p: any) => ({ name: str(p.name, 60), kind: p.kind === "waiting" ? "waiting" : "owner" })).slice(0, 6) : [],
+    people: Array.isArray(t?.people) ? t.people.filter((p: any) => str(p?.name, 60)).map((p: any) => ({ name: person(str(p.name, 60)), kind: p.kind === "waiting" ? "waiting" : "owner" }))
+      .filter((p: any, i: number, a: any[]) => a.findIndex((q) => q.name === p.name) === i).slice(0, 6) : [],
     due: /^\d{4}-\d{2}-\d{2}$/.test(t?.due) ? t.due : "",
     tag: ["critical", "blocker"].includes(t?.tag) ? t.tag : "",
     help: str(t?.help, 1000),

@@ -597,3 +597,5 @@ html { scroll-behavior: smooth; }
   .page, .notif-drawer, .notif-overlay, .tracker-table tr.flash td, .cmt.flash, .bell.has svg, .mention-pop { animation: none !important; }
   html { scroll-behavior: auto; }
 }
+.chip-ext::after { content: ' ↗'; opacity: .7; }
+.chip-pick.chip-ext:not(.chip-owner):not(.chip-wait) { border-style: dashed; }
