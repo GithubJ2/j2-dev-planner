@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { useToast } from '../lib/toast'
 import { timeAgo } from '../lib/utils'
+import { MentionInput, MentionText } from './Mentions'
 
 // Comment count for every task in a project, kept live.
 export function useCommentCounts(projectId) {
@@ -33,7 +34,7 @@ export function CommentButton({ count, onClick }) {
 }
 
 // Slim side panel with the thread for one task or subtask.
-export function CommentsPanel({ task, parentTitle, onClose }) {
+export function CommentsPanel({ task, parentTitle, onClose, highlight }) {
   const { user, isAdmin } = useAuth()
   const toast = useToast()
   const [list, setList] = useState(null)
@@ -55,7 +56,11 @@ export function CommentsPanel({ task, parentTitle, onClose }) {
     window.addEventListener('keydown', onKey)
     return () => { supabase.removeChannel(ch); window.removeEventListener('keydown', onKey) }
   }, [task.id, onClose])
-  useEffect(() => { endRef.current?.scrollIntoView({ block: 'end' }) }, [list])
+  useEffect(() => {
+    if (!list) return
+    const target = highlight && document.getElementById(`cmt-${highlight}`)
+    ;(target || endRef.current)?.scrollIntoView({ block: target ? 'center' : 'end', behavior: 'smooth' })
+  }, [list, highlight])
 
   const post = async (e) => {
     e?.preventDefault()
@@ -87,17 +92,17 @@ export function CommentsPanel({ task, parentTitle, onClose }) {
         {list === null && <div className="small muted">Loading…</div>}
         {list?.length === 0 && <div className="small muted">No comments yet. Updates, links, blockers: drop them here.</div>}
         {list?.map((c) => (
-          <div key={c.id} className={`cmt${c.user_id === user.id ? ' mine' : ''}`}>
+          <div key={c.id} id={`cmt-${c.id}`} className={`cmt${c.user_id === user.id ? ' mine' : ''}${c.id === highlight ? ' flash' : ''}`}>
             <div className="cmt-meta"><b>{who(c.user_id)}</b> · {timeAgo(c.created_at)}
               {(c.user_id === user.id || isAdmin) && <button className="text-btn cmt-del" onClick={() => remove(c)}>delete</button>}
             </div>
-            <div className="cmt-body">{c.body}</div>
+            <div className="cmt-body"><MentionText text={c.body} /></div>
           </div>
         ))}
         <div ref={endRef} />
       </div>
       <form className="cmt-form" onSubmit={post}>
-        <textarea className="input" rows={2} value={body} autoFocus placeholder="Write a comment… (Enter to post, Shift+Enter for a new line)"
+        <MentionInput as="textarea" className="input" rows={2} value={body} autoFocus placeholder="Write a comment… type @ to mention someone"
           onChange={(e) => setBody(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); post() } }} />
         <button className="btn btn-primary btn-sm" disabled={busy || !body.trim()}>Post</button>

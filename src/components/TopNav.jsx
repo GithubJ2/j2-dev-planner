@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import HelpPanel from './HelpPanel'
 import DumpBox from './DumpBox'
 import FrisbeeLogo from './FrisbeeLogo'
+import NotificationsBell from './Notifications'
 import { NavLink, useLocation } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { supabase } from '../lib/supabase'
@@ -49,6 +50,7 @@ export default function TopNav() {
         )}
       </div>
       <div className="topnav-user">
+        <NotificationsBell />
         <button className="btn btn-ghost btn-sm dump-btn" onClick={() => setDump(true)} title="Paste notes, emails or screenshots and let AI sort them into tasks (D)">Dump</button>
         <button className="btn btn-ghost btn-sm" onClick={() => setHelp(true)}>Help</button>
         <span className="user-name">{profile?.full_name || profile?.email}</span>

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { useToast } from '../lib/toast'
@@ -7,6 +7,7 @@ import Modal from '../components/Modal'
 import { PeopleEditor, PeopleView, peopleOf, useTeam } from '../components/PeopleChips'
 import { fmtDate } from './Dashboard'
 import { CommentButton, CommentsPanel, useCommentCounts } from '../components/TaskComments'
+import { MentionInput, MentionText } from '../components/Mentions'
 
 const EMPTY = { title: '', people: [], due: '', tag: '', help: '' }
 
@@ -27,8 +28,11 @@ export default function PlanView() {
   const [quickSub, setQuickSub] = useState({}) // parent id -> text being typed
   const [editProject, setEditProject] = useState(false)
   const [commentsFor, setCommentsFor] = useState(null) // task id
+  const [highlightComment, setHighlightComment] = useState(null)
+  const [flashId, setFlashId] = useState(null)
+  const [params, setParams] = useSearchParams()
   const commentCounts = useCommentCounts(id)
-  const closeComments = useCallback(() => setCommentsFor(null), [])
+  const closeComments = useCallback(() => { setCommentsFor(null); setHighlightComment(null) }, [])
   const [pform, setPform] = useState({ name: '', description: '', target_date: '' })
 
   const load = useCallback(async () => {
@@ -41,6 +45,26 @@ export default function PlanView() {
     setProject(p.data); setTasks(t.data)
   }, [id])
   useEffect(() => { load() }, [load])
+
+  // Arriving from a notification: open the parent, glide to the row, flash it, open the thread.
+  useEffect(() => {
+    const target = params.get('task')
+    if (!target || !tasks) return
+    const t = tasks.find((x) => x.id === target)
+    if (!t) return
+    if (t.parent_id) setOpen((s) => new Set(s).add(t.parent_id))
+    if (t.done) setHideDone(false)
+    setHideBlocker(false); setOwnerFilter('')
+    const comment = params.get('comment')
+    setTimeout(() => {
+      document.querySelector(`[data-task-id="${target}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      setFlashId(target)
+      setTimeout(() => setFlashId(null), 2200)
+      if (comment) { setHighlightComment(comment); setCommentsFor(target) }
+    }, 120)
+    setParams({}, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params, tasks])
 
   // live updates from teammates
   useEffect(() => {
@@ -175,7 +199,7 @@ export default function PlanView() {
     const subsDone = subs.filter((s) => s.done).length
     const isOpen = open.has(t.id)
     return (
-      <tr key={t.id} className={`${t.done ? 'done' : ''} ${isOpen ? 'open' : ''} ${parent ? 'sub' : ''}`}>
+      <tr key={t.id} data-task-id={t.id} className={`${t.done ? 'done' : ''} ${isOpen ? 'open' : ''} ${parent ? 'sub' : ''} ${flashId === t.id ? 'flash' : ''}`}>
         <td><input type="checkbox" checked={t.done} onChange={() => toggleDone(t)} aria-label="Done" /></td>
         <td className="num">{parent ? `${parent.priority}.${t.priority}` : t.priority}</td>
         <td>
@@ -183,11 +207,11 @@ export default function PlanView() {
             {parent && <span className="sub-arrow" aria-hidden="true">↳</span>}
             <button className="task-name" onClick={() => (parent ? startEdit(t) : toggleOpen(t.id))} aria-expanded={parent ? undefined : isOpen} title={t.help || (parent ? 'Click to edit' : subs.length ? 'Show subtasks' : 'Add subtasks')}>
               {!parent && <span className={`caret${isOpen ? ' down' : ''}`} aria-hidden="true">▸</span>}
-              {t.title}{t.tag && <span className={`ttag ${t.tag}`}>{t.tag}</span>}
+              <MentionText text={t.title} />{t.tag && <span className={`ttag ${t.tag}`}>{t.tag}</span>}
               {subs.length > 0 && <span className={`subcount${subsDone === subs.length ? ' all' : ''}`}>{subsDone}/{subs.length}</span>}
             </button>
           </div>
-          {t.help && <div className="task-note">{t.help}</div>}
+          {t.help && <div className="task-note"><MentionText text={t.help} /></div>}
         </td>
         <td><PeopleView task={t} onClick={() => startEdit(t)} /></td>
         <td className={`due ${dueClass(t)}`}>{fmtDate(t.due)}</td>
@@ -260,20 +284,20 @@ export default function PlanView() {
           footer={<><button className="btn btn-ghost" onClick={() => setEditing(null)}>Cancel</button><button className="btn btn-primary" onClick={save} disabled={!form.title.trim()}>Save</button></>}>
           <div className="stack">
             {editing.parent_id && <div className="small muted">Under <b>{tasks.find((t) => t.id === editing.parent_id)?.title}</b></div>}
-            <label>Task<input className="input" autoFocus value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></label>
+            <label>Task<MentionInput autoFocus value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="What needs doing? Type @ to mention someone" /></label>
             <label>Owner / waiting on<PeopleEditor value={form.people} onChange={(people) => setForm({ ...form, people })} team={team} /></label>
             <div className="row-2">
               <label>Due<input className="input" type="date" value={form.due} onChange={(e) => setForm({ ...form, due: e.target.value })} /></label>
               <label>Tag<select className="input" value={form.tag} onChange={(e) => setForm({ ...form, tag: e.target.value })}><option value="">none</option><option value="critical">critical</option><option value="blocker">blocker</option></select></label>
             </div>
-            <label className="small muted">Note (optional, one line)<input className="input" value={form.help} onChange={(e) => setForm({ ...form, help: e.target.value })} placeholder="Only if the title needs it. Steps go in subtasks." /></label>
+            <label className="small muted">Note (optional, one line)<MentionInput value={form.help} onChange={(e) => setForm({ ...form, help: e.target.value })} placeholder="Only if the title needs it. Steps go in subtasks." /></label>
           </div>
         </Modal>
       )}
 
       {commentsFor && tasks.find((t) => t.id === commentsFor) && (() => {
         const t = tasks.find((x) => x.id === commentsFor)
-        return <CommentsPanel key={t.id} task={t} parentTitle={t.parent_id ? tasks.find((x) => x.id === t.parent_id)?.title : null} onClose={closeComments} />
+        return <CommentsPanel key={t.id} task={t} highlight={highlightComment} parentTitle={t.parent_id ? tasks.find((x) => x.id === t.parent_id)?.title : null} onClose={closeComments} />
       })()}
 
       {editProject && (

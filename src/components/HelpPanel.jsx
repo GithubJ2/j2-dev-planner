@@ -15,6 +15,8 @@ export default function HelpPanel({ onClose }) {
             <li><strong>Click a task name</strong> (▸ turns ▾) to show its subtasks. Each subtask has its own owner / waiting on, due date and ▲▼ order, kept inside that task. Type in the line under them and press Enter to add one. Click a subtask's name to edit it.</li>
             <li>Ticking every subtask ticks the task. Ticking a task ticks all its subtasks. <strong>Expand all</strong> opens everything.</li>
             <li>The faint speech bubble at the end of each row opens its <strong>comments</strong>. A number shows when there are some. Enter posts, Shift+Enter adds a line.</li>
+            <li>Type <strong>@</strong> in a comment, task name or note to mention someone. They get a notification, and so does anyone you add as owner or waiting on.</li>
+            <li>The <strong>bell</strong> shows your notifications. Tap one to jump straight to it. Swipe an item left to mark it read, or use <strong>Mark all as read</strong>. Swipe the panel right to close it.</li>
             <li><strong>Owner / waiting on</strong>: dark chips are owners, dashed ⏳ chips are people the owner is waiting on. Click the chips to change them. A task can have several of each.</li>
             <li><strong>▲ ▼</strong> change priority. Sort by priority, owner, due date or open-first. Filter by owner.</li>
             <li><strong>✎</strong> edits a task. <strong>Add task</strong> at the bottom.</li>

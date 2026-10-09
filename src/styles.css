@@ -545,3 +545,55 @@ label { display: grid; gap: 0.3rem; font-size: 0.85rem; font-weight: 500; color:
 .cmt-form { border-top: 1px solid var(--line); padding: 10px 16px 14px; display: flex; flex-direction: column; gap: 8px; }
 .cmt-form .btn { align-self: flex-end; }
 @media (prefers-reduced-motion: reduce) { .cmt-panel { animation: none; } }
+
+/* ---------- Mentions ---------- */
+.mention-wrap { position: relative; display: block; }
+.mention { color: var(--link); background: var(--link-wash); border-radius: 4px; padding: 0 3px; font-weight: 600; }
+.mention-pop { position: absolute; left: 0; top: calc(100% + 4px); z-index: 70; list-style: none; margin: 0; padding: 4px; min-width: 220px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); animation: pop-in .12s ease-out; }
+.cmt-form .mention-pop { top: auto; bottom: calc(100% + 4px); }
+.mention-pop li { padding: 6px 9px; border-radius: 7px; cursor: pointer; font-size: .88rem; }
+.mention-pop li.on, .mention-pop li:hover { background: var(--paper); }
+@keyframes pop-in { from { opacity: 0; transform: translateY(-4px); } }
+
+/* ---------- Bell + drawer ---------- */
+.bell { position: relative; display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; border: 1px solid rgba(255,255,255,.25); background: none; color: #fff; cursor: pointer; }
+.bell:hover { background: rgba(255,255,255,.1); }
+.bell.has svg { animation: bell-nudge 2.4s ease-in-out 1; transform-origin: 50% 10%; }
+.bell-n { position: absolute; top: -5px; right: -6px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 999px; background: var(--j2red); color: #fff; font-size: .66rem; font-weight: 700; display: grid; place-items: center; box-shadow: 0 0 0 2px var(--ink); }
+@keyframes bell-nudge { 0%, 70%, 100% { rotate: 0deg; } 75% { rotate: 14deg; } 82% { rotate: -12deg; } 89% { rotate: 6deg; } }
+.notif-overlay { position: fixed; inset: 0; z-index: 80; background: rgba(28, 36, 52, .25); animation: fade-in .2s ease-out; color: var(--ink); text-align: left; font-family: var(--sans); font-weight: 400; }
+.notif-overlay.closing { animation: fade-out .22s ease-in forwards; }
+.notif-drawer { position: absolute; top: 0; right: 0; bottom: 0; width: min(400px, 100vw); background: var(--panel); box-shadow: -12px 0 32px rgba(28, 36, 52, .18); display: flex; flex-direction: column; animation: drawer-in .28s cubic-bezier(.2, .8, .2, 1); transition: transform .22s cubic-bezier(.2, .8, .2, 1); touch-action: pan-y; }
+.notif-drawer.closing { animation: drawer-out .22s ease-in forwards; }
+.notif-grab { position: absolute; left: 6px; top: 50%; width: 4px; height: 44px; margin-top: -22px; border-radius: 4px; background: var(--line); }
+.notif-head { display: flex; align-items: center; gap: 10px; padding: 14px 16px 12px 20px; border-bottom: 1px solid var(--line); }
+.notif-head .spacer { flex: 1; }
+.notif-list { flex: 1; overflow-y: auto; padding: 8px 10px 8px 16px; }
+.notif-empty { color: var(--fog); padding: 30px 12px; text-align: center; font-size: .9rem; }
+.notif-item { position: relative; margin: 6px 0; border-radius: 12px; overflow: hidden; }
+.notif-under { position: absolute; inset: 0; background: var(--settled); color: #fff; display: flex; align-items: center; justify-content: flex-end; padding-right: 16px; font-size: .82rem; font-weight: 600; }
+.notif-card { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; cursor: pointer; touch-action: pan-y; user-select: none; transition: transform .2s cubic-bezier(.2, .8, .2, 1), background .15s; }
+.notif-card:hover { background: #fafaf8; }
+.notif-item.unread .notif-card { border-left: 3px solid var(--j2red); background: #fffafa; }
+.notif-line { font-size: .9rem; }
+.notif-where { font-size: .82rem; color: var(--ink-2); }
+.notif-snip { font-size: .84rem; color: var(--ink-2); margin-top: 4px; padding-left: 8px; border-left: 2px solid var(--line); white-space: pre-wrap; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.notif-meta { font-size: .74rem; color: var(--fog); margin-top: 4px; }
+.notif-foot { padding: 8px 16px 12px 20px; border-top: 1px solid var(--line); }
+@keyframes drawer-in { from { transform: translateX(100%); } }
+@keyframes drawer-out { to { transform: translateX(100%); } }
+@keyframes fade-in { from { opacity: 0; } }
+@keyframes fade-out { to { opacity: 0; } }
+
+/* ---------- Smooth arrival ---------- */
+.page { animation: page-in .32s cubic-bezier(.2, .8, .2, 1); }
+@keyframes page-in { from { opacity: 0; transform: translateX(18px); } }
+.tracker-table tr.flash td { animation: row-flash 2.2s ease-out; }
+@keyframes row-flash { 0%, 25% { background: #fff3c4; } 100% { background: transparent; } }
+.cmt.flash { animation: cmt-flash 2.2s ease-out; }
+@keyframes cmt-flash { 0%, 25% { box-shadow: 0 0 0 2px #f2c94c; } 100% { box-shadow: none; } }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) {
+  .page, .notif-drawer, .notif-overlay, .tracker-table tr.flash td, .cmt.flash, .bell.has svg, .mention-pop { animation: none !important; }
+  html { scroll-behavior: auto; }
+}
