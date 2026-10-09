@@ -1,11 +1,11 @@
 // Turns a messy dump (notes, an email thread, screenshots) into clean ProjectR tasks.
 //   POST /dump-tasks  { project_id, text, images: [dataUrl...], team: [names], answers?: {q: a} }
 //   -> { tasks: [{ title, people:[{name,kind}], due, tag, help, subtasks:[...] }], questions: [string] }
-// Signed-in, approved ProjectR users only. Needs the ANTHROPIC_API_KEY secret.
+// Signed-in, approved ProjectR users only (checked below with the caller's own token). Needs the ANTHROPIC_API_KEY secret.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-const CORS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, content-type, apikey", "Access-Control-Allow-Methods": "POST, OPTIONS" };
+const CORS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type", "Access-Control-Allow-Methods": "POST, OPTIONS" };
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...CORS, "Content-Type": "application/json" } });
 
 Deno.serve(async (req) => {
@@ -14,6 +14,8 @@ Deno.serve(async (req) => {
   const auth = req.headers.get("Authorization") || "";
   if (!auth.startsWith("Bearer ")) return json({ error: "Sign in first" }, 401);
   const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: auth } } });
+  const { data: u } = await supabase.auth.getUser(auth.slice(7));
+  if (!u?.user) return json({ error: "Sign in first" }, 401);
   const { data: ok } = await supabase.rpc("is_approved");
   if (!ok) return json({ error: "Your account is not approved yet" }, 403);
 
