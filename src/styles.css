@@ -524,3 +524,24 @@ label { display: grid; gap: 0.3rem; font-size: 0.85rem; font-weight: 500; color:
 .modal-overlay { color: var(--ink); text-align: left; font-family: var(--sans); font-weight: 400; }
 .task-note { font-size: .8rem; color: var(--fog); margin-top: 2px; }
 .tracker-table tr.sub .task-name { cursor: pointer; }
+
+/* ---------- Comments: quiet bubble + side panel ---------- */
+.cmt-btn { display: inline-flex; align-items: center; gap: 3px; background: none; border: 0; padding: 4px 5px; border-radius: 6px; color: var(--fog-light); cursor: pointer; font: inherit; font-size: .72rem; vertical-align: middle; }
+.cmt-btn:hover { color: var(--ink-2); background: var(--paper); }
+.cmt-btn.has { color: var(--ink-2); }
+.cmt-btn.has span { font-weight: 600; }
+.tracker-table tr:not(:hover) .cmt-btn:not(.has) { opacity: .55; }
+.cmt-panel { position: fixed; top: 52px; right: 0; bottom: 0; width: min(380px, 100vw); background: var(--panel); border-left: 1px solid var(--line); box-shadow: -8px 0 24px rgba(28, 36, 52, .08); z-index: 40; display: flex; flex-direction: column; color: var(--ink); animation: cmt-in .16s ease-out; }
+@keyframes cmt-in { from { transform: translateX(16px); opacity: 0; } }
+.cmt-head { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.cmt-title { font-weight: 600; line-height: 1.3; }
+.cmt-list { flex: 1; overflow-y: auto; padding: 12px 16px; display: flex; flex-direction: column; gap: 12px; }
+.cmt { background: var(--paper); border-radius: 10px; padding: 8px 10px; max-width: 92%; }
+.cmt.mine { align-self: flex-end; background: var(--link-wash); }
+.cmt-meta { font-size: .74rem; color: var(--fog); margin-bottom: 2px; }
+.cmt-meta b { color: var(--ink-2); }
+.cmt-body { font-size: .9rem; white-space: pre-wrap; word-break: break-word; }
+.cmt-del { font-size: .72rem; margin-left: 8px; color: var(--fog); }
+.cmt-form { border-top: 1px solid var(--line); padding: 10px 16px 14px; display: flex; flex-direction: column; gap: 8px; }
+.cmt-form .btn { align-self: flex-end; }
+@media (prefers-reduced-motion: reduce) { .cmt-panel { animation: none; } }

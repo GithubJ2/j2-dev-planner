@@ -6,6 +6,7 @@ import { useToast } from '../lib/toast'
 import Modal from '../components/Modal'
 import { PeopleEditor, PeopleView, peopleOf, useTeam } from '../components/PeopleChips'
 import { fmtDate } from './Dashboard'
+import { CommentButton, CommentsPanel, useCommentCounts } from '../components/TaskComments'
 
 const EMPTY = { title: '', people: [], due: '', tag: '', help: '' }
 
@@ -25,6 +26,9 @@ export default function PlanView() {
   const [form, setForm] = useState(EMPTY)
   const [quickSub, setQuickSub] = useState({}) // parent id -> text being typed
   const [editProject, setEditProject] = useState(false)
+  const [commentsFor, setCommentsFor] = useState(null) // task id
+  const commentCounts = useCommentCounts(id)
+  const closeComments = useCallback(() => setCommentsFor(null), [])
   const [pform, setPform] = useState({ name: '', description: '', target_date: '' })
 
   const load = useCallback(async () => {
@@ -188,7 +192,7 @@ export default function PlanView() {
         <td><PeopleView task={t} onClick={() => startEdit(t)} /></td>
         <td className={`due ${dueClass(t)}`}>{fmtDate(t.due)}</td>
         <td><div className="prio"><button className="btn btn-ghost btn-sm" onClick={() => move(t, -1)} title="Higher">▲</button><button className="btn btn-ghost btn-sm" onClick={() => move(t, 1)} title="Lower">▼</button></div></td>
-        <td className="row-actions"><button className="btn btn-ghost btn-sm" onClick={() => startEdit(t)} title="Edit">✎</button><button className="btn btn-ghost btn-sm" onClick={() => remove(t)} title="Remove">✕</button></td>
+        <td className="row-actions"><CommentButton count={commentCounts[t.id] || 0} onClick={() => setCommentsFor(t.id)} /><button className="btn btn-ghost btn-sm" onClick={() => startEdit(t)} title="Edit">✎</button><button className="btn btn-ghost btn-sm" onClick={() => remove(t)} title="Remove">✕</button></td>
       </tr>
     )
   }
@@ -266,6 +270,11 @@ export default function PlanView() {
           </div>
         </Modal>
       )}
+
+      {commentsFor && tasks.find((t) => t.id === commentsFor) && (() => {
+        const t = tasks.find((x) => x.id === commentsFor)
+        return <CommentsPanel key={t.id} task={t} parentTitle={t.parent_id ? tasks.find((x) => x.id === t.parent_id)?.title : null} onClose={closeComments} />
+      })()}
 
       {editProject && (
         <Modal title="Edit project" onClose={() => setEditProject(false)}
