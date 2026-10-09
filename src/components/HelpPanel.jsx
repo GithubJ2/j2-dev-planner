@@ -12,11 +12,16 @@ export default function HelpPanel({ onClose }) {
           <h3>Working a tracker</h3>
           <ul>
             <li><strong>Tick</strong> the box when a task is done. It records who and when.</li>
-            <li><strong>Click a task name</strong> to read its help notes.</li>
+            <li><strong>Click a task name</strong> (or the ▸ arrow) to open it: help notes and its subtasks. Type in the box under the subtasks and press Enter to add one.</li>
+            <li><strong>Owner / waiting on</strong>: dark chips are owners, dashed ⏳ chips are people the owner is waiting on. Click the chips to change them. A task can have several of each.</li>
             <li><strong>▲ ▼</strong> change priority. Sort by priority, owner, due date or open-first. Filter by owner.</li>
             <li><strong>✎</strong> edits a task. <strong>Add task</strong> at the bottom.</li>
             <li>Due dates show <span style={{ color: 'var(--danger, #a7303f)' }}>red</span> when overdue and amber when due within 3 days.</li>
           </ul>
+        </section>
+        <section>
+          <h3>The dump box</h3>
+          <p>Got a messy email thread, meeting notes or a screenshot? <strong>Pull the logo down</strong> the page until it becomes a frisbee, let go, and it boomerangs back to open the dump box. (Or press <strong>D</strong>, or the <strong>Dump</strong> button.) Paste anything in. AI sorts it into tasks and subtasks with owners and dates, asks you at most three quick questions, and you check the list before it's added.</p>
         </section>
         <section>
           <h3>Tags</h3>

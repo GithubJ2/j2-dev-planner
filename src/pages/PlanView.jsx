@@ -4,9 +4,10 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { useToast } from '../lib/toast'
 import Modal from '../components/Modal'
+import { PeopleEditor, PeopleView, peopleOf, useTeam } from '../components/PeopleChips'
 import { fmtDate } from './Dashboard'
 
-const EMPTY = { title: '', owner: '', due: '', tag: '', help: '' }
+const EMPTY = { title: '', people: [], due: '', tag: '', help: '' }
 
 export default function PlanView() {
   const { id } = useParams()
@@ -20,8 +21,9 @@ export default function PlanView() {
   const [hideDone, setHideDone] = useState(false)
   const [hideBlocker, setHideBlocker] = useState(false)
   const [open, setOpen] = useState(() => new Set())
-  const [editing, setEditing] = useState(null) // task object or 'new'
+  const [editing, setEditing] = useState(null) // task object, or { new: true, parent_id }
   const [form, setForm] = useState(EMPTY)
+  const [quickSub, setQuickSub] = useState({}) // parent id -> text being typed
   const [editProject, setEditProject] = useState(false)
   const [pform, setPform] = useState({ name: '', description: '', target_date: '' })
 
@@ -44,7 +46,8 @@ export default function PlanView() {
     return () => { supabase.removeChannel(ch) }
   }, [id, load])
 
-  const owners = useMemo(() => [...new Set((tasks ?? []).map((t) => (t.owner || '').split(/[,(]/)[0].trim()).filter(Boolean))].sort(), [tasks])
+  const names = useMemo(() => [...new Set((tasks ?? []).flatMap((t) => peopleOf(t).map((p) => p.name)))].sort(), [tasks])
+  const team = useTeam(names)
   const today = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d }, [])
   const dueClass = (t) => {
     if (!t.due || t.done) return ''
@@ -52,17 +55,32 @@ export default function PlanView() {
     return diff < 0 ? 'late' : diff <= 3 ? 'soon' : ''
   }
 
+  // Tree: top-level tasks, each with its subtasks in priority order.
+  const children = useMemo(() => {
+    const m = {}
+    for (const t of tasks ?? []) if (t.parent_id) (m[t.parent_id] ??= []).push(t)
+    for (const k in m) m[k].sort((a, b) => a.priority - b.priority)
+    return m
+  }, [tasks])
+  const involves = (t, name) => peopleOf(t).some((p) => p.name === name) || (children[t.id] ?? []).some((s) => peopleOf(s).some((p) => p.name === name))
+
   const visible = useMemo(() => {
-    const list = (tasks ?? []).filter((t) => !(hideDone && t.done)).filter((t) => !(hideBlocker && t.tag === 'blocker')).filter((t) => !ownerFilter || (t.owner || '').startsWith(ownerFilter))
+    const list = (tasks ?? []).filter((t) => !t.parent_id)
+      .filter((t) => !(hideDone && t.done))
+      .filter((t) => !(hideBlocker && t.tag === 'blocker'))
+      .filter((t) => !ownerFilter || involves(t, ownerFilter))
+    const firstDue = (t) => [t.due, ...(children[t.id] ?? []).map((s) => s.due)].filter(Boolean).sort()[0] || '9999'
     const cmp = {
       priority: (a, b) => a.priority - b.priority,
       owner: (a, b) => (a.owner || '').localeCompare(b.owner || '') || a.priority - b.priority,
-      due: (a, b) => (a.due || '9999').localeCompare(b.due || '9999') || a.priority - b.priority,
+      due: (a, b) => firstDue(a).localeCompare(firstDue(b)) || a.priority - b.priority,
       status: (a, b) => (a.done - b.done) || a.priority - b.priority,
     }[sort]
     return [...list].sort(cmp)
-  }, [tasks, sort, ownerFilter, hideDone, hideBlocker])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tasks, sort, ownerFilter, hideDone, hideBlocker, children])
 
+  const toggleOpen = (tid) => setOpen((s) => { const n = new Set(s); n.has(tid) ? n.delete(tid) : n.add(tid); return n })
   const toggleDone = async (t) => {
     setTasks((ts) => ts.map((x) => (x.id === t.id ? { ...x, done: !t.done } : x)))
     const { error } = await supabase.from('tasks').update({ done: !t.done }).eq('id', t.id)
@@ -73,23 +91,35 @@ export default function PlanView() {
     if (error) return toast.error(error.message)
     load()
   }
-  const startEdit = (t) => { setEditing(t); setForm({ title: t.title, owner: t.owner || '', due: t.due || '', tag: t.tag || '', help: t.help || '' }) }
-  const startNew = () => { setEditing('new'); setForm(EMPTY) }
+  const startEdit = (t) => { setEditing(t); setForm({ title: t.title, people: peopleOf(t), due: t.due || '', tag: t.tag || '', help: t.help || '' }) }
+  const startNew = (parent_id = null) => { setEditing({ new: true, parent_id }); setForm(EMPTY) }
   const save = async () => {
     if (!form.title.trim()) return
-    const row = { title: form.title.trim(), owner: form.owner.trim() || null, due: form.due || null, tag: form.tag || null, help: form.help.trim() || null }
+    const row = { title: form.title.trim(), people: form.people, due: form.due || null, tag: form.tag || null, help: form.help.trim() || null }
+    if (!form.people.length) row.owner = null
     let error
-    if (editing === 'new') {
-      const maxP = Math.max(0, ...(tasks ?? []).map((t) => t.priority))
-      ;({ error } = await supabase.from('tasks').insert({ ...row, project_id: id, priority: maxP + 1, created_by: user.id }))
+    if (editing.new) {
+      const siblings = (tasks ?? []).filter((t) => (t.parent_id ?? null) === (editing.parent_id ?? null))
+      const maxP = Math.max(0, ...siblings.map((t) => t.priority))
+      ;({ error } = await supabase.from('tasks').insert({ ...row, project_id: id, parent_id: editing.parent_id, priority: maxP + 1, created_by: user.id }))
+      if (editing.parent_id) setOpen((s) => new Set(s).add(editing.parent_id))
     } else {
       ;({ error } = await supabase.from('tasks').update(row).eq('id', editing.id))
     }
     if (error) return toast.error(error.message)
     setEditing(null); load()
   }
+  const addQuickSub = async (parent) => {
+    const title = (quickSub[parent.id] || '').trim()
+    if (!title) return
+    const maxP = Math.max(0, ...(children[parent.id] ?? []).map((t) => t.priority))
+    const { error } = await supabase.from('tasks').insert({ title, project_id: id, parent_id: parent.id, people: peopleOf(parent), priority: maxP + 1, created_by: user.id })
+    if (error) return toast.error(error.message)
+    setQuickSub((q) => ({ ...q, [parent.id]: '' })); load()
+  }
   const remove = async (t) => {
-    if (!confirm(`Remove "${t.title}"?`)) return
+    const n = (children[t.id] ?? []).length
+    if (!confirm(`Remove "${t.title}"${n ? ` and its ${n} subtask${n > 1 ? 's' : ''}` : ''}?`)) return
     const { error } = await supabase.from('tasks').delete().eq('id', t.id)
     if (error) return toast.error(error.message)
     load()
@@ -101,8 +131,11 @@ export default function PlanView() {
   }
   const exportCsv = () => {
     const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`
-    const lines = [['Priority', 'Task', 'Owner', 'Due', 'Done', 'Tag', 'Help'].join(',')]
-    for (const t of [...(tasks ?? [])].sort((a, b) => a.priority - b.priority)) lines.push([t.priority, t.title, t.owner, t.due, t.done ? 'yes' : 'no', t.tag, t.help].map(esc).join(','))
+    const lines = [['Priority', 'Task', 'Subtask of', 'Owner / waiting on', 'Due', 'Done', 'Tag', 'Help'].join(',')]
+    const byId = Object.fromEntries((tasks ?? []).map((t) => [t.id, t]))
+    for (const t of [...(tasks ?? [])].sort((a, b) => (byId[a.parent_id]?.priority ?? a.priority) - (byId[b.parent_id]?.priority ?? b.priority) || (a.parent_id ? 1 : 0) - (b.parent_id ? 1 : 0) || a.priority - b.priority)) {
+      lines.push([t.parent_id ? `${byId[t.parent_id]?.priority}.${t.priority}` : t.priority, t.title, byId[t.parent_id]?.title || '', t.owner, t.due, t.done ? 'yes' : 'no', t.tag, t.help].map(esc).join(','))
+    }
     const blob = new Blob([lines.join('\n')], { type: 'text/csv' })
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${project.name.replace(/[^\w-]+/g, '-')}.csv`; a.click(); URL.revokeObjectURL(a.href)
   }
@@ -112,6 +145,33 @@ export default function PlanView() {
 
   const done = tasks.filter((t) => t.done).length
   const pct = tasks.length ? Math.round((done / tasks.length) * 100) : 0
+
+  const row = (t, parent) => {
+    const subs = children[t.id] ?? []
+    const subsDone = subs.filter((s) => s.done).length
+    const isOpen = open.has(t.id)
+    return (
+      <tr key={t.id} className={`${t.done ? 'done' : ''} ${isOpen ? 'open' : ''} ${parent ? 'sub' : ''}`}>
+        <td><input type="checkbox" checked={t.done} onChange={() => toggleDone(t)} aria-label="Done" /></td>
+        <td className="num">{parent ? `${parent.priority}.${t.priority}` : t.priority}</td>
+        <td>
+          <div className="task-line">
+            {parent && <span className="sub-arrow" aria-hidden="true">↳</span>}
+            <button className="task-name" onClick={() => toggleOpen(t.id)} aria-expanded={isOpen}>
+              {!parent && <span className={`caret${isOpen ? ' down' : ''}`} aria-hidden="true">▸</span>}
+              {t.title}{t.tag && <span className={`ttag ${t.tag}`}>{t.tag}</span>}
+              {subs.length > 0 && <span className={`subcount${subsDone === subs.length ? ' all' : ''}`}>{subsDone}/{subs.length}</span>}
+            </button>
+          </div>
+          {isOpen && <div className="task-help">{t.help || 'No notes yet. Press ✎ to add some.'}{t.done && t.done_at && <div className="small muted" style={{ marginTop: 6 }}>Done {new Date(t.done_at).toLocaleString('en-GB')}</div>}</div>}
+        </td>
+        <td><PeopleView task={t} onClick={() => startEdit(t)} /></td>
+        <td className={`due ${dueClass(t)}`}>{fmtDate(t.due)}</td>
+        <td><div className="prio"><button className="btn btn-ghost btn-sm" onClick={() => move(t, -1)} title="Higher">▲</button><button className="btn btn-ghost btn-sm" onClick={() => move(t, 1)} title="Lower">▼</button></div></td>
+        <td className="row-actions"><button className="btn btn-ghost btn-sm" onClick={() => startEdit(t)} title="Edit">✎</button><button className="btn btn-ghost btn-sm" onClick={() => remove(t)} title="Remove">✕</button></td>
+      </tr>
+    )
+  }
 
   return (
     <div className="page tracker">
@@ -128,15 +188,15 @@ export default function PlanView() {
             <option value="due">By due date</option>
             <option value="status">Open first</option>
           </select>
-          <select className="input input-compact" value={ownerFilter} onChange={(e) => setOwnerFilter(e.target.value)} aria-label="Owner">
+          <select className="input input-compact" value={ownerFilter} onChange={(e) => setOwnerFilter(e.target.value)} aria-label="Person">
             <option value="">Everyone</option>
-            {owners.map((o) => <option key={o}>{o}</option>)}
+            {names.map((o) => <option key={o}>{o}</option>)}
           </select>
           <label className="small"><input type="checkbox" checked={hideDone} onChange={(e) => setHideDone(e.target.checked)} /> hide done</label>
           <label className="small"><input type="checkbox" checked={hideBlocker} onChange={(e) => setHideBlocker(e.target.checked)} /> hide blockers</label>
           <button className="btn btn-ghost btn-sm" onClick={exportCsv}>Export</button>
           {isAdmin && <button className="btn btn-ghost btn-sm" onClick={() => { setPform({ name: project.name, description: project.description || '', target_date: project.target_date || '' }); setEditProject(true) }}>Edit project</button>}
-          <button className="btn btn-primary btn-sm" onClick={startNew}>Add task</button>
+          <button className="btn btn-primary btn-sm" onClick={() => startNew(null)}>Add task</button>
         </div>
       </div>
       <div className="progress-track progress-lg"><div className="progress-fill" style={{ width: `${pct}%` }} /></div>
@@ -145,33 +205,38 @@ export default function PlanView() {
         <table className="tracker-table">
           <thead><tr><th></th><th>#</th><th>Task</th><th>Owner / waiting on</th><th>Due</th><th>Priority</th><th></th></tr></thead>
           <tbody>
-            {visible.map((t) => (
-              <tr key={t.id} className={`${t.done ? 'done' : ''} ${open.has(t.id) ? 'open' : ''}`}>
-                <td><input type="checkbox" checked={t.done} onChange={() => toggleDone(t)} aria-label="Done" /></td>
-                <td className="num">{t.priority}</td>
-                <td>
-                  <button className="task-name" onClick={() => setOpen((s) => { const n = new Set(s); n.has(t.id) ? n.delete(t.id) : n.add(t.id); return n })}>
-                    {t.title}{t.tag && <span className={`ttag ${t.tag}`}>{t.tag}</span>}
-                  </button>
-                  {open.has(t.id) && <div className="task-help">{t.help || 'No notes yet. Press ✎ to add some.'}{t.done && t.done_at && <div className="small muted" style={{ marginTop: 6 }}>Done {new Date(t.done_at).toLocaleString('en-GB')}</div>}</div>}
-                </td>
-                <td><span className="owner-pill">{t.owner || 'unassigned'}</span></td>
-                <td className={`due ${dueClass(t)}`}>{fmtDate(t.due)}</td>
-                <td><div className="prio"><button className="btn btn-ghost btn-sm" onClick={() => move(t, -1)} title="Higher">▲</button><button className="btn btn-ghost btn-sm" onClick={() => move(t, 1)} title="Lower">▼</button></div></td>
-                <td className="row-actions"><button className="btn btn-ghost btn-sm" onClick={() => startEdit(t)} title="Edit">✎</button><button className="btn btn-ghost btn-sm" onClick={() => remove(t)} title="Remove">✕</button></td>
-              </tr>
-            ))}
-            {visible.length === 0 && <tr><td colSpan={7} className="empty-cell">Nothing here. Add a task or clear the filters.</td></tr>}
+            {visible.map((t) => {
+              const subs = (children[t.id] ?? []).filter((s) => !(hideDone && s.done))
+              const isOpen = open.has(t.id)
+              return [
+                row(t, null),
+                ...(isOpen ? subs.map((s) => row(s, t)) : []),
+                isOpen && (
+                  <tr key={t.id + '-add'} className="sub sub-add">
+                    <td></td><td></td>
+                    <td colSpan={5}>
+                      <form className="quick-sub" onSubmit={(e) => { e.preventDefault(); addQuickSub(t) }}>
+                        <span className="sub-arrow" aria-hidden="true">↳</span>
+                        <input className="input input-compact" value={quickSub[t.id] || ''} onChange={(e) => setQuickSub((q) => ({ ...q, [t.id]: e.target.value }))} placeholder="Add a subtask and press Enter" />
+                        <button type="button" className="text-btn small" onClick={() => startNew(t.id)}>more options…</button>
+                      </form>
+                    </td>
+                  </tr>
+                ),
+              ]
+            })}
+            {visible.length === 0 && <tr><td colSpan={7} className="empty-cell">Nothing here. Add a task, pull the logo down for the dump box, or clear the filters.</td></tr>}
           </tbody>
         </table>
       </div>
 
       {editing && (
-        <Modal title={editing === 'new' ? 'Add task' : 'Edit task'} onClose={() => setEditing(null)}
+        <Modal title={editing.new ? (editing.parent_id ? 'Add subtask' : 'Add task') : (editing.parent_id ? 'Edit subtask' : 'Edit task')} onClose={() => setEditing(null)}
           footer={<><button className="btn btn-ghost" onClick={() => setEditing(null)}>Cancel</button><button className="btn btn-primary" onClick={save} disabled={!form.title.trim()}>Save</button></>}>
           <div className="stack">
+            {editing.parent_id && <div className="small muted">Under <b>{tasks.find((t) => t.id === editing.parent_id)?.title}</b></div>}
             <label>Task<input className="input" autoFocus value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></label>
-            <label>Owner / waiting on<input className="input" value={form.owner} onChange={(e) => setForm({ ...form, owner: e.target.value })} placeholder="e.g. Jason (ask for channel)" /></label>
+            <label>Owner / waiting on<PeopleEditor value={form.people} onChange={(people) => setForm({ ...form, people })} team={team} /></label>
             <div className="row-2">
               <label>Due<input className="input" type="date" value={form.due} onChange={(e) => setForm({ ...form, due: e.target.value })} /></label>
               <label>Tag<select className="input" value={form.tag} onChange={(e) => setForm({ ...form, tag: e.target.value })}><option value="">none</option><option value="critical">critical</option><option value="blocker">blocker</option></select></label>
