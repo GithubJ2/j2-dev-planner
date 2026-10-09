@@ -68,6 +68,7 @@ export function CommentsPanel({ task, parentTitle, onClose }) {
     setBody('')
   }
   const remove = async (c) => {
+    setList((l) => (l ?? []).filter((x) => x.id !== c.id))
     const { error } = await supabase.from('task_comments').delete().eq('id', c.id)
     if (error) toast.error(error.message)
   }

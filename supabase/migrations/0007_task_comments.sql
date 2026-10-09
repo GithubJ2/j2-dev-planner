@@ -25,3 +25,4 @@ create or replace view public.project_progress as
     min(t.due) filter (where not t.done) as next_due
    from projects p left join tasks t on t.project_id = p.id
   group by p.id;
+alter table public.task_comments replica identity full; -- so deletes reach live listeners
