@@ -520,3 +520,5 @@ label { display: grid; gap: 0.3rem; font-size: 0.85rem; font-weight: 500; color:
 .boomerang { position: fixed; z-index: 90; pointer-events: none; width: 60px; height: 60px; filter: drop-shadow(0 6px 8px rgba(28, 36, 52, .3)); }
 @keyframes disc-spin { to { rotate: 360deg; } }
 @media (prefers-reduced-motion: reduce) { .disc.is-disc { animation: none; } }
+/* Modals opened from the dark nav must not inherit its white text. */
+.modal-overlay { color: var(--ink); text-align: left; font-family: var(--sans); font-weight: 400; }

@@ -32,7 +32,7 @@ Deno.serve(async (req) => {
   const team = (body.team || []).slice(0, 30).join(", ") || "unknown";
   const system = `You turn messy notes into a short, clean task list for a small team's tracker (ProjectR). Today is ${today}. Team members: ${team}.
 Rules:
-- Output ONLY JSON: {"tasks":[...],"questions":[...]}.
+- Output ONLY one JSON object, no prose, no code fences: {"tasks":[...],"questions":[...]}.
 - Each task: {"title": short imperative (max 80 chars), "people":[{"name":"<team member>","kind":"owner"|"waiting"}], "due":"YYYY-MM-DD" or "", "tag":"critical"|"blocker"|"", "help": 1-3 plain sentences on what to do and why, "subtasks":[{same shape, no subtasks}]}.
 - "owner" = the person who must do it. "waiting" = someone the owner is waiting on (outside help, approval, a reply).
 - Only use team names given above. If the text names someone not in the team, put them as "waiting" with that name.
@@ -53,13 +53,13 @@ Rules:
   const r = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-    body: JSON.stringify({ model: Deno.env.get("AI_MODEL") || "claude-sonnet-5-5", max_tokens: 4000, system, messages: [{ role: "user", content }, { role: "assistant", content: "{" }] }),
+    body: JSON.stringify({ model: Deno.env.get("AI_MODEL") || "claude-sonnet-5-5", max_tokens: 4000, system, messages: [{ role: "user", content }] }),
   });
   if (!r.ok) return json({ error: "AI call failed: " + (await r.text()).slice(0, 300) }, 502);
   const out = await r.json();
-  const raw = "{" + (out.content?.map((c: { text?: string }) => c.text || "").join("") || "");
+  const raw: string = out.content?.map((c: { text?: string }) => c.text || "").join("") || "";
   let parsed: { tasks?: unknown[]; questions?: unknown[] };
-  try { parsed = JSON.parse(raw.slice(0, raw.lastIndexOf("}") + 1)); } catch { return json({ error: "AI gave an unreadable answer. Try again or shorten the dump." }, 502); }
+  try { parsed = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1)); } catch { return json({ error: "AI gave an unreadable answer. Try again or shorten the dump." }, 502); }
 
   const str = (v: unknown, n: number) => (typeof v === "string" ? v.trim().slice(0, n) : "");
   const clean = (t: any, sub = false) => ({

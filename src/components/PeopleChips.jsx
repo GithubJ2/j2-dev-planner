@@ -10,8 +10,13 @@ export function firstName(s) { return (s || '').trim().split(/\s+/)[0] }
 export function useTeam(extra = []) {
   const [team, setTeam] = useState([])
   useEffect(() => {
-    supabase.from('profiles').select('full_name, email').eq('approved', true).then(({ data }) => {
-      setTeam((data ?? []).map((p) => firstName(p.full_name) || (p.email || '').split('@')[0]).filter(Boolean))
+    Promise.all([
+      supabase.from('profiles').select('full_name, email').eq('approved', true),
+      supabase.from('tasks').select('people').limit(1000),
+    ]).then(([pr, tk]) => {
+      const fromProfiles = (pr.data ?? []).map((p) => firstName(p.full_name) || (p.email || '').split('@')[0])
+      const fromTasks = (tk.data ?? []).flatMap((t) => (Array.isArray(t.people) ? t.people : []).filter((p) => p.kind !== 'waiting').map((p) => p.name))
+      setTeam([...new Set([...fromProfiles, ...fromTasks])].filter(Boolean))
     })
   }, [])
   const all = [...new Set([...team, ...extra])].sort((a, b) => a.localeCompare(b))
