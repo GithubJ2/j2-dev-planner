@@ -522,3 +522,5 @@ label { display: grid; gap: 0.3rem; font-size: 0.85rem; font-weight: 500; color:
 @media (prefers-reduced-motion: reduce) { .disc.is-disc { animation: none; } }
 /* Modals opened from the dark nav must not inherit its white text. */
 .modal-overlay { color: var(--ink); text-align: left; font-family: var(--sans); font-weight: 400; }
+.task-note { font-size: .8rem; color: var(--fog); margin-top: 2px; }
+.tracker-table tr.sub .task-name { cursor: pointer; }

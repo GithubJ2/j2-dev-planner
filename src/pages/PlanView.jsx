@@ -81,9 +81,25 @@ export default function PlanView() {
   }, [tasks, sort, ownerFilter, hideDone, hideBlocker, children])
 
   const toggleOpen = (tid) => setOpen((s) => { const n = new Set(s); n.has(tid) ? n.delete(tid) : n.add(tid); return n })
+  // A main task is done when all its subtasks are done. Ticking a main task ticks its subtasks too.
   const toggleDone = async (t) => {
-    setTasks((ts) => ts.map((x) => (x.id === t.id ? { ...x, done: !t.done } : x)))
-    const { error } = await supabase.from('tasks').update({ done: !t.done }).eq('id', t.id)
+    const done = !t.done
+    const ids = [t.id]
+    if (!t.parent_id) for (const s of children[t.id] ?? []) if (s.done !== done) ids.push(s.id)
+    let parentFix = null
+    if (t.parent_id) {
+      const sibs = (children[t.parent_id] ?? []).map((s) => (s.id === t.id ? { ...s, done } : s))
+      const parent = (tasks ?? []).find((x) => x.id === t.parent_id)
+      const allDone = sibs.length > 0 && sibs.every((s) => s.done)
+      if (parent && parent.done !== allDone) parentFix = { id: parent.id, done: allDone }
+    }
+    setTasks((ts) => ts.map((x) => (ids.includes(x.id) ? { ...x, done } : parentFix && x.id === parentFix.id ? { ...x, done: parentFix.done } : x)))
+    const { error } = await supabase.from('tasks').update({ done }).in('id', ids)
+    if (!error && parentFix) {
+      const r = await supabase.from('tasks').update({ done: parentFix.done }).eq('id', parentFix.id)
+      if (r.error) return toast.error(r.error.message)
+      if (parentFix.done) toast.success('All subtasks done, task ticked off')
+    }
     if (error) { toast.error(error.message); load() }
   }
   const move = async (t, dir) => {
@@ -115,6 +131,7 @@ export default function PlanView() {
     const maxP = Math.max(0, ...(children[parent.id] ?? []).map((t) => t.priority))
     const { error } = await supabase.from('tasks').insert({ title, project_id: id, parent_id: parent.id, people: peopleOf(parent), priority: maxP + 1, created_by: user.id })
     if (error) return toast.error(error.message)
+    if (parent.done) await supabase.from('tasks').update({ done: false }).eq('id', parent.id)
     setQuickSub((q) => ({ ...q, [parent.id]: '' })); load()
   }
   const remove = async (t) => {
@@ -143,8 +160,11 @@ export default function PlanView() {
   if (error) return <div className="page"><p className="form-error">{error}</p><Link to="/" className="back-link">Back to projects</Link></div>
   if (!project || !tasks) return <div className="splash">Loading tracker</div>
 
-  const done = tasks.filter((t) => t.done).length
-  const pct = tasks.length ? Math.round((done / tasks.length) * 100) : 0
+  const mains = tasks.filter((t) => !t.parent_id)
+  const subsAll = tasks.filter((t) => t.parent_id)
+  const done = mains.filter((t) => t.done).length
+  const subsDoneAll = subsAll.filter((t) => t.done).length
+  const pct = subsAll.length ? Math.round((subsDoneAll / subsAll.length) * 100) : mains.length ? Math.round((done / mains.length) * 100) : 0
 
   const row = (t, parent) => {
     const subs = children[t.id] ?? []
@@ -157,13 +177,13 @@ export default function PlanView() {
         <td>
           <div className="task-line">
             {parent && <span className="sub-arrow" aria-hidden="true">↳</span>}
-            <button className="task-name" onClick={() => toggleOpen(t.id)} aria-expanded={isOpen}>
+            <button className="task-name" onClick={() => (parent ? startEdit(t) : toggleOpen(t.id))} aria-expanded={parent ? undefined : isOpen} title={t.help || (parent ? 'Click to edit' : subs.length ? 'Show subtasks' : 'Add subtasks')}>
               {!parent && <span className={`caret${isOpen ? ' down' : ''}`} aria-hidden="true">▸</span>}
               {t.title}{t.tag && <span className={`ttag ${t.tag}`}>{t.tag}</span>}
               {subs.length > 0 && <span className={`subcount${subsDone === subs.length ? ' all' : ''}`}>{subsDone}/{subs.length}</span>}
             </button>
           </div>
-          {isOpen && <div className="task-help">{t.help || 'No notes yet. Press ✎ to add some.'}{t.done && t.done_at && <div className="small muted" style={{ marginTop: 6 }}>Done {new Date(t.done_at).toLocaleString('en-GB')}</div>}</div>}
+          {t.help && <div className="task-note">{t.help}</div>}
         </td>
         <td><PeopleView task={t} onClick={() => startEdit(t)} /></td>
         <td className={`due ${dueClass(t)}`}>{fmtDate(t.due)}</td>
@@ -179,7 +199,7 @@ export default function PlanView() {
       <div className="dash-head">
         <div>
           <h1>{project.name}</h1>
-          <p className="muted">{project.description}{project.target_date && <> · Target <strong>{fmtDate(project.target_date)}</strong></>} · {done}/{tasks.length} done</p>
+          <p className="muted">{project.description}{project.target_date && <> · Target <strong>{fmtDate(project.target_date)}</strong></>} · {done}/{mains.length} tasks done{subsAll.length > 0 && <> · {subsDoneAll}/{subsAll.length} steps</>}</p>
         </div>
         <div className="row-actions">
           <select className="input input-compact" value={sort} onChange={(e) => setSort(e.target.value)} aria-label="Sort">
@@ -194,6 +214,7 @@ export default function PlanView() {
           </select>
           <label className="small"><input type="checkbox" checked={hideDone} onChange={(e) => setHideDone(e.target.checked)} /> hide done</label>
           <label className="small"><input type="checkbox" checked={hideBlocker} onChange={(e) => setHideBlocker(e.target.checked)} /> hide blockers</label>
+          <button className="btn btn-ghost btn-sm" onClick={() => setOpen((s) => (s.size ? new Set() : new Set(visible.map((t) => t.id))))}>{open.size ? 'Collapse all' : 'Expand all'}</button>
           <button className="btn btn-ghost btn-sm" onClick={exportCsv}>Export</button>
           {isAdmin && <button className="btn btn-ghost btn-sm" onClick={() => { setPform({ name: project.name, description: project.description || '', target_date: project.target_date || '' }); setEditProject(true) }}>Edit project</button>}
           <button className="btn btn-primary btn-sm" onClick={() => startNew(null)}>Add task</button>
@@ -241,7 +262,7 @@ export default function PlanView() {
               <label>Due<input className="input" type="date" value={form.due} onChange={(e) => setForm({ ...form, due: e.target.value })} /></label>
               <label>Tag<select className="input" value={form.tag} onChange={(e) => setForm({ ...form, tag: e.target.value })}><option value="">none</option><option value="critical">critical</option><option value="blocker">blocker</option></select></label>
             </div>
-            <label>Help notes<textarea className="input" rows={6} value={form.help} onChange={(e) => setForm({ ...form, help: e.target.value })} placeholder="What to do, step by step. Why it matters." /></label>
+            <label className="small muted">Note (optional, one line)<input className="input" value={form.help} onChange={(e) => setForm({ ...form, help: e.target.value })} placeholder="Only if the title needs it. Steps go in subtasks." /></label>
           </div>
         </Modal>
       )}

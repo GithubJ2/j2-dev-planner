@@ -12,7 +12,8 @@ export default function HelpPanel({ onClose }) {
           <h3>Working a tracker</h3>
           <ul>
             <li><strong>Tick</strong> the box when a task is done. It records who and when.</li>
-            <li><strong>Click a task name</strong> (or the ▸ arrow) to open it: help notes and its subtasks. Type in the box under the subtasks and press Enter to add one.</li>
+            <li><strong>Click a task name</strong> (▸ turns ▾) to show its subtasks. Each subtask has its own owner / waiting on, due date and ▲▼ order, kept inside that task. Type in the line under them and press Enter to add one. Click a subtask's name to edit it.</li>
+            <li>Ticking every subtask ticks the task. Ticking a task ticks all its subtasks. <strong>Expand all</strong> opens everything.</li>
             <li><strong>Owner / waiting on</strong>: dark chips are owners, dashed ⏳ chips are people the owner is waiting on. Click the chips to change them. A task can have several of each.</li>
             <li><strong>▲ ▼</strong> change priority. Sort by priority, owner, due date or open-first. Filter by owner.</li>
             <li><strong>✎</strong> edits a task. <strong>Add task</strong> at the bottom.</li>
